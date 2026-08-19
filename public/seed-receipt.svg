@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="880" viewBox="0 0 640 880">
+  <rect width="640" height="880" fill="#f8f9ff"/>
+  <rect x="32" y="32" width="576" height="816" rx="16" fill="#ffffff" stroke="#c6c6cd"/>
+  <text x="320" y="90" text-anchor="middle" font-family="sans-serif" font-size="28" font-weight="700" fill="#0b4f9c">Dire Express</text>
+  <text x="320" y="128" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#45464d">Payment Receipt</text>
+  <line x1="72" y1="160" x2="568" y2="160" stroke="#d6e4ff"/>
+  <text x="72" y="210" font-family="sans-serif" font-size="14" fill="#45464d">Reference</text>
+  <text x="72" y="236" font-family="sans-serif" font-size="20" font-weight="600" fill="#0b1c30">DE-SEED-003</text>
+  <text x="72" y="290" font-family="sans-serif" font-size="14" fill="#45464d">Paid by</text>
+  <text x="72" y="316" font-family="sans-serif" font-size="18" fill="#0b1c30">Alex Broker - Dire Express Logistics</text>
+  <text x="72" y="370" font-family="sans-serif" font-size="14" fill="#45464d">Amount</text>
+  <text x="72" y="400" font-family="sans-serif" font-size="28" font-weight="700" fill="#0058be">ETB 4,100.00</text>
+  <text x="72" y="460" font-family="sans-serif" font-size="14" fill="#45464d">Method</text>
+  <text x="72" y="486" font-family="sans-serif" font-size="18" fill="#0b1c30">Bank transfer</text>
+  <text x="72" y="540" font-family="sans-serif" font-size="14" fill="#45464d">Transaction ID</text>
+  <text x="72" y="566" font-family="monospace" font-size="16" fill="#0b1c30">TXN-SEED-88421</text>
+  <rect x="72" y="620" width="496" height="140" rx="12" fill="#d6e4ff"/>
+  <text x="320" y="690" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#001a41">Sample receipt for admin review</text>
+  <text x="320" y="720" text-anchor="middle" font-family="sans-serif" font-size="13" fill="#3f465c">Approve to activate this load</text>
+</svg>

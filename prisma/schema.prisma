@@ -1,0 +1,223 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  BROKER
+  DRIVER
+  CUSTOMER
+  ADMIN
+}
+
+enum LoadStatus {
+  PENDING
+  CREATED
+  ASSIGNED
+  ACCEPTED
+  REJECTED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum NotificationType {
+  LOAD_ASSIGNED
+  LOAD_ACCEPTED
+  LOAD_REJECTED
+  STATUS_UPDATE
+  POD_UPLOADED
+  TRANSPORT_REQUESTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  imageUrl     String?
+  role         Role
+  loadsCreated Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  brokerProfile   BrokerProfile?
+  driverProfile   DriverProfile?
+  customerProfile CustomerProfile?
+  notifications   Notification[]
+  accounts        Account[]
+  sessions        Session[]
+  devices         Device[]
+  reviewedLoads   Load[]           @relation("LoadReviewedBy")
+}
+
+model BrokerProfile {
+  id      String  @id @default(cuid())
+  userId  String  @unique
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company String?
+  loads   Load[]  @relation("BrokerLoads")
+  drivers DriverProfile[] @relation("BrokerDrivers")
+  customers CustomerProfile[] @relation("BrokerCustomers")
+
+  referredById String?
+  referredBy   BrokerProfile?  @relation("BrokerReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals    BrokerProfile[] @relation("BrokerReferrals")
+}
+
+model DriverProfile {
+  id          String           @id @default(cuid())
+  userId      String           @unique
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plateNo     String?
+  vehicleType String?
+  isAvailable Boolean          @default(true)
+  brokerId    String?
+  broker      BrokerProfile?   @relation("BrokerDrivers", fields: [brokerId], references: [id], onDelete: SetNull)
+  loads       Load[]           @relation("DriverLoads")
+  locations   DriverLocation[]
+}
+
+model CustomerProfile {
+  id      String  @id @default(cuid())
+  userId  String  @unique
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company String?
+  address String?
+  brokerId String?
+  broker   BrokerProfile? @relation("BrokerCustomers", fields: [brokerId], references: [id], onDelete: SetNull)
+  loads   Load[]  @relation("CustomerLoads")
+}
+
+model Load {
+  id                String     @id @default(cuid())
+  referenceNo       String     @unique
+  status            LoadStatus @default(PENDING)
+  pickupAddress     String
+  pickupLat         Float?
+  pickupLng         Float?
+  deliveryAddress   String
+  deliveryLat       Float?
+  deliveryLng       Float?
+  pickupDate        DateTime
+  deliveryDate      DateTime?
+  cargoDescription  String?
+  equipmentType     String?
+  weightLbs         Float?
+  rate              Decimal?   @db.Decimal(10, 2)
+  notes             String?
+  paymentReceiptUrl String?
+  reviewedAt        DateTime?
+  reviewedById      String?
+  reviewedBy        User?      @relation("LoadReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  rejectionReason   String?
+
+  brokerId   String
+  broker     BrokerProfile   @relation("BrokerLoads", fields: [brokerId], references: [id])
+  customerId String
+  customer   CustomerProfile @relation("CustomerLoads", fields: [customerId], references: [id])
+  driverId   String?
+  driver     DriverProfile?  @relation("DriverLoads", fields: [driverId], references: [id])
+
+  proofOfDelivery ProofOfDelivery?
+  locations       DriverLocation[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([status])
+  @@index([driverId])
+  @@index([customerId])
+  @@index([reviewedById])
+}
+
+model Device {
+  id           String   @id @default(cuid())
+  deviceId     String   @unique
+  loadsCreated Int      @default(0)
+  lastUserId   String?
+  lastUser     User?    @relation(fields: [lastUserId], references: [id], onDelete: SetNull)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DriverLocation {
+  id         String        @id @default(cuid())
+  driverId   String
+  driver     DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  loadId     String?
+  load       Load?         @relation(fields: [loadId], references: [id])
+  lat        Float
+  lng        Float
+  heading    Float?
+  speed      Float?
+  recordedAt DateTime      @default(now())
+
+  @@index([driverId, recordedAt])
+}
+
+model ProofOfDelivery {
+  id            String   @id @default(cuid())
+  loadId        String   @unique
+  load          Load     @relation(fields: [loadId], references: [id], onDelete: Cascade)
+  photoUrl      String
+  signatureUrl  String
+  recipientName String?
+  notes         String?
+  deliveredAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  loadId    String?
+  data      Json?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
