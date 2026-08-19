@@ -46,7 +46,10 @@ export function Sidebar({ adminName }: { adminName: string }) {
         <p className="truncate text-sm font-medium">{adminName}</p>
         <button
           type="button"
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={async () => {
+            await signOut({ redirect: false });
+            window.location.assign("/login");
+          }}
           className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-sidebar-muted hover:bg-white/5 hover:text-white"
         >
           <LogOut size={16} />
