@@ -36,13 +36,14 @@ enum NotificationType {
 
 model User {
   id           String   @id @default(cuid())
-  email        String   @unique
+  email        String?
   passwordHash String
   name         String
   phone        String?
   imageUrl     String?
   role         Role
   loadsCreated Int      @default(0)
+  loadsCreatedOn DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -54,10 +55,13 @@ model User {
   sessions        Session[]
   devices         Device[]
   reviewedLoads   Load[]           @relation("LoadReviewedBy")
+
+  @@unique([email, role])
+  @@unique([phone, role])
 }
 
 model BrokerProfile {
-  id      String  @id @default(cuid())
+  id      String  @id
   userId  String  @unique
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company String?
@@ -66,21 +70,23 @@ model BrokerProfile {
   customers CustomerProfile[] @relation("BrokerCustomers")
 
   referredById String?
-  referredBy   BrokerProfile?  @relation("BrokerReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referredBy   BrokerProfile?  @relation("BrokerReferrals", fields: [referredById], references: [id], onDelete: SetNull, onUpdate: Cascade)
   referrals    BrokerProfile[] @relation("BrokerReferrals")
 }
 
 model DriverProfile {
-  id          String           @id @default(cuid())
-  userId      String           @unique
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plateNo     String?
-  vehicleType String?
-  isAvailable Boolean          @default(true)
-  brokerId    String?
-  broker      BrokerProfile?   @relation("BrokerDrivers", fields: [brokerId], references: [id], onDelete: SetNull)
-  loads       Load[]           @relation("DriverLoads")
-  locations   DriverLocation[]
+  id               String           @id @default(cuid())
+  userId           String           @unique
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plateNo          String?
+  vehicleType      String?
+  loadingCapacity  Float?
+  truckImageUrl    String?
+  isAvailable      Boolean          @default(true)
+  brokerId         String?
+  broker           BrokerProfile?   @relation("BrokerDrivers", fields: [brokerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  loads            Load[]           @relation("DriverLoads")
+  locations        DriverLocation[]
 }
 
 model CustomerProfile {
@@ -90,7 +96,7 @@ model CustomerProfile {
   company String?
   address String?
   brokerId String?
-  broker   BrokerProfile? @relation("BrokerCustomers", fields: [brokerId], references: [id], onDelete: SetNull)
+  broker   BrokerProfile? @relation("BrokerCustomers", fields: [brokerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   loads   Load[]  @relation("CustomerLoads")
 }
 
@@ -110,6 +116,8 @@ model Load {
   equipmentType     String?
   weightLbs         Float?
   rate              Decimal?   @db.Decimal(10, 2)
+  systemPrice       Decimal?   @db.Decimal(10, 2)
+  distanceKm        Float?
   notes             String?
   paymentReceiptUrl String?
   reviewedAt        DateTime?
@@ -118,7 +126,7 @@ model Load {
   rejectionReason   String?
 
   brokerId   String
-  broker     BrokerProfile   @relation("BrokerLoads", fields: [brokerId], references: [id])
+  broker     BrokerProfile   @relation("BrokerLoads", fields: [brokerId], references: [id], onUpdate: Cascade)
   customerId String
   customer   CustomerProfile @relation("CustomerLoads", fields: [customerId], references: [id])
   driverId   String?
@@ -139,6 +147,7 @@ model Device {
   id           String   @id @default(cuid())
   deviceId     String   @unique
   loadsCreated Int      @default(0)
+  loadsCreatedOn DateTime?
   lastUserId   String?
   lastUser     User?    @relation(fields: [lastUserId], references: [id], onDelete: SetNull)
   createdAt    DateTime @default(now())
@@ -220,4 +229,23 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model AppSettings {
+  id            String   @id @default("default")
+  freeLoadLimit Int      @default(3)
+  basePrice     Decimal  @default(50) @db.Decimal(10, 2)
+  pricePerKm    Decimal  @default(1) @db.Decimal(10, 2)
+  updatedAt     DateTime @updatedAt
+}
+
+model DemoRequest {
+  id        String    @id @default(cuid())
+  email     String
+  createdAt DateTime  @default(now())
+  readAt    DateTime?
+  source    String    @default("landing")
+
+  @@index([createdAt])
+  @@index([readAt])
 }

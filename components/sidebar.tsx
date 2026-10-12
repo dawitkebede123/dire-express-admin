@@ -3,16 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { ClipboardCheck, LayoutDashboard, LogOut, Users } from "lucide-react";
+import {
+  ClipboardCheck,
+  Inbox,
+  LayoutDashboard,
+  LogOut,
+  Settings,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/loads", label: "Pending loads", icon: ClipboardCheck },
   { href: "/agents", label: "Agents", icon: Users },
+  { href: "/demo-requests", label: "Demo requests", icon: Inbox },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar({ adminName }: { adminName: string }) {
+export function Sidebar({
+  adminName,
+  unreadDemoCount = 0,
+}: {
+  adminName: string;
+  unreadDemoCount?: number;
+}) {
   const pathname = usePathname();
 
   return (
@@ -25,6 +40,7 @@ export function Sidebar({ adminName }: { adminName: string }) {
         {NAV.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           const Icon = item.icon;
+          const showBadge = item.href === "/demo-requests" && unreadDemoCount > 0;
           return (
             <Link
               key={item.href}
@@ -37,7 +53,12 @@ export function Sidebar({ adminName }: { adminName: string }) {
               )}
             >
               <Icon size={18} />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {showBadge ? (
+                <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-semibold text-black">
+                  {unreadDemoCount > 99 ? "99+" : unreadDemoCount}
+                </span>
+              ) : null}
             </Link>
           );
         })}

@@ -71,7 +71,7 @@ export default async function AgentsPage() {
                 <tr key={row.id} className="border-t border-border">
                   <td className="px-4 py-3">
                     <span className="font-medium">{row.name}</span>
-                    <span className="block text-xs text-muted">{row.email}</span>
+                    <span className="block text-xs text-muted">{row.email ?? "—"}</span>
                   </td>
                   <td className="px-4 py-3">{row.company ?? "—"}</td>
                   <td className="px-4 py-3">{row.referee}</td>
