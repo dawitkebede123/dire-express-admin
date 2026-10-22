@@ -50,6 +50,11 @@ export type SettingsNode = {
   freeLoadLimit?: unknown;
   basePrice?: unknown;
   pricePerKm?: unknown;
+  payment?: {
+    phoneNumber?: unknown;
+    updatedAt?: unknown;
+    updatedBy?: unknown;
+  };
 };
 
 export type Directory = {
@@ -272,14 +277,17 @@ export type AppSettings = {
   freeLoadLimit: number;
   basePrice: number;
   pricePerKm: number;
+  paymentPhone: string;
 };
 
 export function getSettings(directory: Directory): AppSettings {
   const value = directory.settings;
+  const phone = value?.payment?.phoneNumber;
   return {
     freeLoadLimit: numberOr(value?.freeLoadLimit, DEFAULT_SETTINGS.freeLoadLimit),
     basePrice: numberOr(value?.basePrice, DEFAULT_SETTINGS.basePrice),
     pricePerKm: numberOr(value?.pricePerKm, DEFAULT_SETTINGS.pricePerKm),
+    paymentPhone: typeof phone === "string" ? phone : "",
   };
 }
 

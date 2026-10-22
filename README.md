@@ -112,6 +112,7 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 | `media/{mediaId}/meta` | `ownerUid`, `kind`, `mime`, `size`, `chunkCount`, `createdAt` |
 | `mediaChunks/{mediaId}/{i}` | Base64 chunk, raw size ≤ 261120 bytes |
 | `settings` | `freeLoadLimit`, `basePrice`, `pricePerKm` |
+| `settings/payment` | `{ phoneNumber, updatedAt, updatedBy }`. Public read. `updatedAt` is `ServerValue.TIMESTAMP`. |
 | `admins/{uid}` | `true`. The mobile rules' admin check. |
 | `demoRequests/{id}` | Landing-page leads (`email`, `source`, `createdAt`, `readAt`) |
 
@@ -121,7 +122,7 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 
 ## Rules
 
-Existing mobile checks stay on `admins/{uid} === true`. That includes load writes, settings writes, and reads of a known id.
+Existing mobile checks stay on `admins/{uid} === true`. That includes load writes, settings writes, and reads of a known id. `settings/payment` is publicly readable. An admin with `adminUsers/{uid}/active === true` or `admins/{uid} === true` can write `{ phoneNumber, updatedAt, updatedBy }`. `phoneNumber` is 7–20 characters from digits, spaces, `+`, and `-`.
 
 New **list** reads also require `adminUsers/{uid}/active === true`. They cover `users`, `brokers`, `drivers`, `customers`, `brokerDrivers`, `brokerCustomers`, `loads` (full read, while a broker can still query `orderByChild('brokerId').equalTo(auth.uid)`), `userLoads`, `notifications`, `liveLocations`, `locationHistory`, `admins`, `adminUsers`, and `demoRequests`.
 

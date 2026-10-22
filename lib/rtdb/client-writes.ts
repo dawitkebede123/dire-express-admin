@@ -1,6 +1,6 @@
 "use client";
 
-import { get, push, ref, update } from "firebase/database";
+import { get, push, ref, serverTimestamp, set, update } from "firebase/database";
 import { getClientDb, waitForUser } from "@/lib/firebase/client";
 import { NOT_AN_ADMIN, readDashboardAdmin } from "@/lib/rtdb/admin-access";
 import { invalidateDirectory } from "@/lib/rtdb/reads";
@@ -32,6 +32,26 @@ export async function saveAppSettings(input: {
     basePrice: input.basePrice,
     pricePerKm: input.pricePerKm,
     updatedAt: Date.now(),
+  });
+  invalidateDirectory();
+}
+
+const PAYMENT_PHONE_PATTERN = /^[0-9 +\-]{7,20}$/;
+
+export function isPaymentPhone(value: string) {
+  return PAYMENT_PHONE_PATTERN.test(value);
+}
+
+export async function savePaymentPhone(phoneNumber: string) {
+  const user = await requireAdminUser();
+  const trimmed = phoneNumber.trim();
+  if (!isPaymentPhone(trimmed)) {
+    throw new Error("Enter a phone number of 7–20 characters using digits, spaces, +, or -.");
+  }
+  await set(ref(getClientDb(), "settings/payment"), {
+    phoneNumber: trimmed,
+    updatedAt: serverTimestamp(),
+    updatedBy: user.uid,
   });
   invalidateDirectory();
 }

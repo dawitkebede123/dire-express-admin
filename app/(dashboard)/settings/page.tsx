@@ -1,5 +1,6 @@
 "use client";
 
+import { PaymentPhoneForm } from "@/components/payment-phone-form";
 import { SettingsForm } from "@/components/settings-form";
 import { useDirectory } from "@/components/use-directory";
 import { getSettings } from "@/lib/data";
@@ -17,12 +18,15 @@ export default function SettingsPage() {
       {error && !directory ? <p className="mt-6 text-sm text-muted">{error}</p> : null}
       {!directory && !error ? <p className="mt-6 text-sm text-muted">Loading…</p> : null}
       {settings ? (
-        <SettingsForm
-          key={`${settings.freeLoadLimit}-${settings.basePrice}-${settings.pricePerKm}`}
-          freeLoadLimit={settings.freeLoadLimit}
-          basePrice={settings.basePrice}
-          pricePerKm={settings.pricePerKm}
-        />
+        <>
+          <SettingsForm
+            key={`${settings.freeLoadLimit}-${settings.basePrice}-${settings.pricePerKm}`}
+            freeLoadLimit={settings.freeLoadLimit}
+            basePrice={settings.basePrice}
+            pricePerKm={settings.pricePerKm}
+          />
+          <PaymentPhoneForm key={settings.paymentPhone} phoneNumber={settings.paymentPhone} />
+        </>
       ) : null}
     </div>
   );
