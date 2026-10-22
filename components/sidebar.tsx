@@ -10,6 +10,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
+import { endClientSession } from "@/lib/firebase/client";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -68,11 +69,11 @@ export function Sidebar({
         <button
           type="button"
           onClick={async () => {
-            await fetch("/api/session", { method: "DELETE" });
-            const { endClientSession } = await import("@/lib/firebase/client");
-            await endClientSession();
-            router.push("/login");
-            router.refresh();
+            try {
+              await endClientSession();
+            } finally {
+              router.push("/login");
+            }
           }}
           className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-sidebar-muted hover:bg-white/5 hover:text-white"
         >

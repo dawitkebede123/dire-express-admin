@@ -1,5 +1,3 @@
-import { cache } from "react";
-import { adminDb } from "@/lib/firebase/admin";
 import { isAwaitingReceiptReview, type ReceiptReview } from "@/lib/rtdb/review-state";
 
 const DEFAULT_SETTINGS = {
@@ -8,7 +6,7 @@ const DEFAULT_SETTINGS = {
   pricePerKm: 1,
 };
 
-type UserNode = {
+export type UserNode = {
   name?: string;
   phone?: string;
   email?: string;
@@ -17,13 +15,13 @@ type UserNode = {
   imageUrl?: string;
 };
 
-type BrokerNode = {
+export type BrokerNode = {
   company?: string;
   agentId?: string;
   referredByEmail?: string;
 };
 
-type LoadNode = {
+export type LoadNode = {
   referenceNo?: string;
   status?: string;
   brokerId?: string;
@@ -41,27 +39,26 @@ type LoadNode = {
   deletedAt?: number;
 };
 
+export type DemoNode = {
+  email?: string;
+  source?: string;
+  createdAt?: number;
+  readAt?: number | null;
+};
+
+export type SettingsNode = {
+  freeLoadLimit?: unknown;
+  basePrice?: unknown;
+  pricePerKm?: unknown;
+};
+
 export type Directory = {
   users: Record<string, UserNode>;
   brokers: Record<string, BrokerNode>;
   loads: Record<string, LoadNode>;
+  demoRequests: Record<string, DemoNode>;
+  settings: SettingsNode | null;
 };
-
-async function readNode<T>(path: string): Promise<Record<string, T>> {
-  const snap = await adminDb().ref(path).get();
-  const value = snap.val();
-  if (!value || typeof value !== "object") return {};
-  return value as Record<string, T>;
-}
-
-export const getDirectory = cache(async (): Promise<Directory> => {
-  const [users, brokers, loads] = await Promise.all([
-    readNode<UserNode>("users"),
-    readNode<BrokerNode>("brokers"),
-    readNode<LoadNode>("loads"),
-  ]);
-  return { users, brokers, loads };
-});
 
 function userName(users: Record<string, UserNode>, uid: string | undefined, fallback?: string) {
   if (uid && users[uid]?.name) return users[uid].name;
@@ -77,15 +74,14 @@ function asDate(value: number | string | undefined) {
   return new Date(0);
 }
 
-export async function getOverviewCounts() {
-  const { brokers, loads } = await getDirectory();
+export function getOverviewCounts(directory: Directory) {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const start = startOfToday.getTime();
 
   let pendingCount = 0;
   let approvedToday = 0;
-  for (const load of Object.values(loads)) {
+  for (const load of Object.values(directory.loads)) {
     if (isAwaitingReceiptReview(load)) pendingCount += 1;
     const reviewedAt = load.receiptReview?.reviewedAt;
     if (
@@ -101,7 +97,7 @@ export async function getOverviewCounts() {
   return {
     pendingCount,
     approvedToday,
-    agentCount: Object.keys(brokers).length,
+    agentCount: Object.keys(directory.brokers).length,
   };
 }
 
@@ -116,8 +112,8 @@ export type PendingLoad = {
   customer: { user: { name: string } };
 };
 
-export async function getPendingLoads(): Promise<PendingLoad[]> {
-  const { users, brokers, loads } = await getDirectory();
+export function getPendingLoads(directory: Directory): PendingLoad[] {
+  const { users, brokers, loads } = directory;
   return Object.entries(loads)
     .filter(([, load]) => isAwaitingReceiptReview(load))
     .map(([id, load]) => ({
@@ -155,6 +151,7 @@ export type LoadDetail = {
   paymentReceiptUrl: string | null;
   reviewedAt: Date | null;
   rejectionReason: string | null;
+  awaitingReview: boolean;
   brokerId: string;
   broker: {
     company: string | null;
@@ -163,12 +160,11 @@ export type LoadDetail = {
   customer: { user: { name: string } };
 };
 
-export async function getLoad(id: string): Promise<LoadDetail | null> {
-  const snap = await adminDb().ref(`loads/${id}`).get();
-  const load = snap.val() as LoadNode | null;
+export function getLoad(directory: Directory, id: string): LoadDetail | null {
+  const load = directory.loads[id];
   if (!load) return null;
 
-  const { users, brokers } = await getDirectory();
+  const { users, brokers } = directory;
   const review = load.receiptReview;
   const closed = review?.state === "approved" || review?.state === "rejected";
   const brokerId = load.brokerId || "";
@@ -185,6 +181,7 @@ export async function getLoad(id: string): Promise<LoadDetail | null> {
     paymentReceiptUrl: load.paymentReceiptUrl ?? null,
     reviewedAt: closed && typeof review?.reviewedAt === "number" ? new Date(review.reviewedAt) : null,
     rejectionReason: review?.state === "rejected" ? review.rejectionReason || null : null,
+    awaitingReview: isAwaitingReceiptReview(load),
     brokerId,
     broker: {
       company: brokers[brokerId]?.company ?? null,
@@ -212,8 +209,8 @@ export type AgentScore = {
   score: number;
 };
 
-export async function getAgentScores(): Promise<AgentScore[]> {
-  const { users, brokers, loads } = await getDirectory();
+export function getAgentScores(directory: Directory): AgentScore[] {
+  const { users, brokers, loads } = directory;
 
   const deliveredByBroker = new Map<string, number>();
   for (const load of Object.values(loads)) {
@@ -271,13 +268,14 @@ export async function getAgentScores(): Promise<AgentScore[]> {
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
 }
 
-export async function getSettings() {
-  const snap = await adminDb().ref("settings").get();
-  const value = snap.val() as {
-    freeLoadLimit?: unknown;
-    basePrice?: unknown;
-    pricePerKm?: unknown;
-  } | null;
+export type AppSettings = {
+  freeLoadLimit: number;
+  basePrice: number;
+  pricePerKm: number;
+};
+
+export function getSettings(directory: Directory): AppSettings {
+  const value = directory.settings;
   return {
     freeLoadLimit: numberOr(value?.freeLoadLimit, DEFAULT_SETTINGS.freeLoadLimit),
     basePrice: numberOr(value?.basePrice, DEFAULT_SETTINGS.basePrice),
@@ -302,16 +300,8 @@ export type DemoRequestRow = {
   readAt: Date | null;
 };
 
-type DemoNode = {
-  email?: string;
-  source?: string;
-  createdAt?: number;
-  readAt?: number | null;
-};
-
-export const getDemoRequests = cache(async (): Promise<DemoRequestRow[]> => {
-  const rows = await readNode<DemoNode>("demoRequests");
-  return Object.entries(rows)
+export function getDemoRequests(directory: Directory): DemoRequestRow[] {
+  return Object.entries(directory.demoRequests)
     .map(([id, row]) => ({
       id,
       email: row.email || "",
@@ -321,21 +311,8 @@ export const getDemoRequests = cache(async (): Promise<DemoRequestRow[]> => {
     }))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, 200);
-});
-
-export async function countUnreadDemoRequests() {
-  const requests = await getDemoRequests();
-  return requests.filter((request) => !request.readAt).length;
 }
 
-export async function markDemoRequestRead(id: string) {
-  if (!id || /[.#$[\]/]/.test(id)) {
-    throw new Error("Invalid demo request id");
-  }
-  const ref = adminDb().ref(`demoRequests/${id}`);
-  const snap = await ref.get();
-  if (!snap.exists()) {
-    throw new Error("Demo request not found");
-  }
-  await ref.update({ readAt: Date.now() });
+export function countUnreadDemoRequests(requests: DemoRequestRow[]) {
+  return requests.filter((request) => !request.readAt).length;
 }

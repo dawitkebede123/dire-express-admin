@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { saveAppSettings } from "@/lib/rtdb/client-writes";
+import { permissionMessage, saveAppSettings } from "@/lib/rtdb/client-writes";
 
 export function SettingsForm({
   freeLoadLimit,
@@ -14,7 +13,6 @@ export function SettingsForm({
   basePrice: number;
   pricePerKm: number;
 }) {
-  const router = useRouter();
   const [limitValue, setLimitValue] = useState(String(freeLoadLimit));
   const [baseValue, setBaseValue] = useState(String(basePrice));
   const [perKmValue, setPerKmValue] = useState(String(pricePerKm));
@@ -47,14 +45,8 @@ export function SettingsForm({
         pricePerKm: nextPerKm,
       });
       toast.success("Settings saved");
-      router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to save settings";
-      toast.error(
-        message.includes("PERMISSION_DENIED")
-          ? "Realtime Database rejected the update. Confirm /admins/{uid} is true."
-          : message
-      );
+      toast.error(permissionMessage(error, "Failed to save settings"));
     } finally {
       setSaving(false);
     }

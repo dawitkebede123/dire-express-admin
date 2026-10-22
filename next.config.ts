@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "export",
+  trailingSlash: true,
+  images: { unoptimized: true },
   allowedDevOrigins: ["187.124.55.8"],
-  serverExternalPackages: ["firebase-admin", "pg"],
 };
 
 export default nextConfig;

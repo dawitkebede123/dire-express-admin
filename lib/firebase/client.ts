@@ -49,9 +49,5 @@ export function waitForUser() {
 }
 
 export async function endClientSession() {
-  try {
-    await signOut(getClientAuth());
-  } catch {
-    // The cookie is cleared by the caller even if Firebase persistence is empty.
-  }
+  await signOut(getClientAuth());
 }

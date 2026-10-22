@@ -1,9 +1,8 @@
 import "dotenv/config";
-import { readFileSync } from "node:fs";
-import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getDatabase } from "firebase-admin/database";
 import { emailIndexHash } from "@/lib/login-index";
+import { initAdminApp } from "./admin-sdk";
 
 const DEFAULT_SETTINGS = {
   freeLoadLimit: 3,
@@ -11,42 +10,16 @@ const DEFAULT_SETTINGS = {
   pricePerKm: 1,
 };
 
-function serviceAccount() {
-  const inline = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
-  const file = process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim();
-  if (!inline && !file) {
-    throw new Error("Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH.");
+function requestedRole() {
+  const role = (process.env.ADMIN_ROLE || "superadmin").trim().toLowerCase();
+  if (role !== "admin" && role !== "superadmin") {
+    throw new Error("ADMIN_ROLE must be admin or superadmin.");
   }
-  const raw = inline
-    ? inline.startsWith("{")
-      ? inline
-      : Buffer.from(inline, "base64").toString("utf8")
-    : readFileSync(file!, "utf8");
-  const json = JSON.parse(raw) as {
-    project_id?: string;
-    projectId?: string;
-    client_email?: string;
-    clientEmail?: string;
-    private_key?: string;
-    privateKey?: string;
-  };
-  const projectId = json.projectId || json.project_id;
-  const clientEmail = json.clientEmail || json.client_email;
-  const privateKey = (json.privateKey || json.private_key || "").replace(/\\n/g, "\n");
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error("Service account JSON is missing project_id, client_email, or private_key.");
-  }
-  return { projectId, clientEmail, privateKey };
+  return role;
 }
 
 async function main() {
-  const databaseURL = process.env.FIREBASE_DATABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
-  if (!databaseURL) throw new Error("Set FIREBASE_DATABASE_URL.");
-
-  if (!getApps().length) {
-    initializeApp({ credential: cert(serviceAccount()), databaseURL });
-  }
-
+  initAdminApp();
   const db = getDatabase();
   const settings = await db.ref("settings").get();
   if (!settings.exists()) {
@@ -97,16 +70,39 @@ async function main() {
     );
   }
   const canonicalAuthEmail = user.email || existing.authEmail || authEmail;
+  const createdAt = existing.createdAt || Date.now();
   await db.ref(`users/${user.uid}`).update({
     name: existing.name || name,
     phone: existing.phone || phone,
     role: "ADMIN",
     email: existing.email || email,
     authEmail: canonicalAuthEmail,
-    createdAt: existing.createdAt || Date.now(),
+    createdAt,
   });
+
+  const existingProfile = ((await db.ref(`adminUsers/${user.uid}`).get()).val() ?? {}) as {
+    name?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+    createdAt?: number;
+  };
+  const role =
+    existingProfile.role === "superadmin" || existingProfile.role === "admin"
+      ? existingProfile.role
+      : requestedRole();
+  const profilePhone = existingProfile.phone || existing.phone || phone;
+  await db.ref(`adminUsers/${user.uid}`).set({
+    name: existingProfile.name || existing.name || name,
+    email: existingProfile.email || existing.email || email,
+    ...(profilePhone ? { phone: profilePhone } : {}),
+    role,
+    active: true,
+    createdAt: existingProfile.createdAt || createdAt,
+  });
+
   await db.ref(`loginIndex/${hash}/ADMIN`).set(canonicalAuthEmail);
-  console.log(`Seeded /admins/${user.uid} = true`);
+  console.log(`Seeded admins/${user.uid} = true and adminUsers/${user.uid} (${role}, active)`);
 }
 
 main().catch((error: unknown) => {

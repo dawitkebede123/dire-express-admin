@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { submitLoadReview } from "@/lib/rtdb/client-writes";
+import { permissionMessage, submitLoadReview } from "@/lib/rtdb/client-writes";
 
 export function ReviewActions({
   loadId,
@@ -30,14 +30,8 @@ export function ReviewActions({
       });
       toast.success(action === "approve" ? "Load approved" : "Load rejected");
       router.push("/loads");
-      router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Review failed";
-      toast.error(
-        message.includes("PERMISSION_DENIED")
-          ? "Realtime Database rejected the update. Confirm /admins/{uid} is true."
-          : message
-      );
+      toast.error(permissionMessage(error, "Review failed"));
     } finally {
       setBusy(null);
     }

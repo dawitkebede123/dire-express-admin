@@ -68,6 +68,17 @@ export type RtdbPayload = {
   locationHistory: Record<string, Record<string, Record<string, unknown>>>;
   settings?: Record<string, unknown>;
   admins: Record<string, true>;
+  adminUsers: Record<
+    string,
+    {
+      name: string;
+      email: string;
+      phone?: string;
+      role: "admin" | "superadmin";
+      active: true;
+      createdAt: number;
+    }
+  >;
   demoRequests: Record<string, Record<string, unknown>>;
   mediaCandidates: MediaCandidate[];
   warnings: string[];
@@ -161,6 +172,7 @@ export async function buildRtdbPayload(tables: PgTables): Promise<RtdbPayload> {
   const liveLocations: RtdbPayload["liveLocations"] = {};
   const locationHistory: RtdbPayload["locationHistory"] = {};
   const admins: Record<string, true> = {};
+  const adminUsers: RtdbPayload["adminUsers"] = {};
   const demoRequests: RtdbPayload["demoRequests"] = {};
   const mediaCandidates: MediaCandidate[] = [];
   const authUsers: AuthImportUser[] = [];
@@ -217,7 +229,17 @@ export async function buildRtdbPayload(tables: PgTables): Promise<RtdbPayload> {
     }
     users[uid] = profile;
 
-    if (role === "ADMIN") admins[uid] = true;
+    if (role === "ADMIN") {
+      admins[uid] = true;
+      adminUsers[uid] = {
+        name,
+        email: email ?? authEmail,
+        role: "admin",
+        active: true,
+        createdAt,
+        ...(phone ? { phone } : {}),
+      };
+    }
 
     const loadsCreated = asNumber(row.loadsCreated);
     if (loadsCreated && loadsCreated > 0) counterUsers[uid] = Math.floor(loadsCreated);
@@ -591,6 +613,7 @@ export async function buildRtdbPayload(tables: PgTables): Promise<RtdbPayload> {
     locationHistory,
     settings,
     admins,
+    adminUsers,
     demoRequests,
     mediaCandidates,
     warnings,
@@ -739,6 +762,18 @@ export async function assertMapping() {
   });
 
   if (payload.admins.admin1 !== true) throw new Error("admin flag missing");
+  if (payload.admins.broker1) throw new Error("broker was flagged as an admin");
+  const importedAdmin = payload.adminUsers.admin1;
+  if (
+    !importedAdmin ||
+    importedAdmin.role !== "admin" ||
+    importedAdmin.active !== true ||
+    importedAdmin.email !== "admin@direexpress.com" ||
+    importedAdmin.phone !== "0911000000"
+  ) {
+    throw new Error("adminUsers profile missing");
+  }
+  if (payload.adminUsers.broker1) throw new Error("broker was added to adminUsers");
   if (payload.authUsers.find((user) => user.uid === "broker1")?.email !== "broker.broker1@users.direexpress.app") {
     throw new Error("synthetic auth email mismatch");
   }

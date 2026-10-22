@@ -3,8 +3,38 @@
     ".read": false,
     ".write": false,
     "admins": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid"
+      }
+    },
+    "adminUsers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
+        ".validate": "newData.hasChildren(['name','email','role','active','createdAt'])",
+        "name": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "phone": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "role": {
+          ".validate": "newData.val() === 'superadmin' || newData.val() === 'admin'"
+        },
+        "active": {
+          ".validate": "newData.isBoolean()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
       }
     },
     "settings": {
@@ -12,6 +42,7 @@
       ".write": "root.child('admins').child(auth.uid).val() === true"
     },
     "users": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid || root.child('admins').child(auth.uid).val() === true",
         ".write": "auth != null && auth.uid === $uid",
@@ -48,6 +79,7 @@
       }
     },
     "brokers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null",
         ".write": "auth != null && auth.uid === $uid",
@@ -84,6 +116,7 @@
       }
     },
     "drivers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid || data.child('brokerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true",
         ".write": "auth != null && auth.uid === $uid",
@@ -94,6 +127,7 @@
       }
     },
     "customers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid || data.child('brokerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true",
         ".write": "auth != null && auth.uid === $uid",
@@ -104,6 +138,7 @@
       }
     },
     "brokerDrivers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$b": {
         ".read": "auth != null && (auth.uid === $b || root.child('admins').child(auth.uid).val() === true)",
         ".indexOn": [
@@ -117,6 +152,7 @@
       }
     },
     "brokerCustomers": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$b": {
         ".read": "auth != null && (auth.uid === $b || root.child('admins').child(auth.uid).val() === true)",
         ".indexOn": [
@@ -146,7 +182,7 @@
       }
     },
     "loads": {
-      ".read": "auth != null && query.orderByChild === 'brokerId' && query.equalTo === auth.uid",
+      ".read": "auth != null && ((query.orderByChild === 'brokerId' && query.equalTo === auth.uid) || (root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true))",
       ".indexOn": [
         "brokerId",
         "customerId",
@@ -283,6 +319,7 @@
       }
     },
     "userLoads": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "$loadId": {
@@ -313,6 +350,7 @@
       }
     },
     "notifications": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         ".indexOn": [
@@ -332,6 +370,7 @@
       }
     },
     "liveLocations": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('drivers').child($uid).child('brokerId').val() === auth.uid || root.child('loads').child(data.child('loadId').val()).child('customerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
         ".write": "auth != null && auth.uid === $uid",
@@ -339,11 +378,38 @@
       }
     },
     "locationHistory": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
       "$loadId": {
         ".read": "auth != null && (root.child('loads').child($loadId).child('brokerId').val() === auth.uid || root.child('loads').child($loadId).child('customerId').val() === auth.uid || root.child('loads').child($loadId).child('driverId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
         "$p": {
           ".write": "auth != null && !data.exists() && root.child('loads').child($loadId).child('driverId').val() === auth.uid",
           ".validate": "newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('at').isNumber()"
+        }
+      }
+    },
+    "demoRequests": {
+      ".read": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
+      ".write": "auth != null && root.child('admins').child(auth.uid).val() === true && root.child('adminUsers').child(auth.uid).child('active').val() === true",
+      ".indexOn": [
+        "createdAt",
+        "readAt"
+      ],
+      "$id": {
+        ".validate": "newData.hasChildren(['email','createdAt'])",
+        "email": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "source": {
+          ".validate": "newData.isString() && newData.val().length <= 80"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "readAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
         }
       }
     },

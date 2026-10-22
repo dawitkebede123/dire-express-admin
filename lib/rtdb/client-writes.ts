@@ -2,15 +2,23 @@
 
 import { get, push, ref, update } from "firebase/database";
 import { getClientDb, waitForUser } from "@/lib/firebase/client";
+import { NOT_AN_ADMIN, readDashboardAdmin } from "@/lib/rtdb/admin-access";
+import { invalidateDirectory } from "@/lib/rtdb/reads";
 import { isAwaitingReceiptReview, reviewCopy } from "@/lib/rtdb/review-state";
 
 async function requireAdminUser() {
   const user = await waitForUser();
-  const flag = await get(ref(getClientDb(), `admins/${user.uid}`));
-  if (flag.val() !== true) {
-    throw new Error("This account is not listed under /admins.");
-  }
+  const profile = await readDashboardAdmin(user.uid);
+  if (!profile) throw new Error(NOT_AN_ADMIN);
   return user;
+}
+
+export function permissionMessage(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  if (message.includes("PERMISSION_DENIED")) {
+    return "Realtime Database rejected the update. Confirm admins/{uid} is true and adminUsers/{uid} is active.";
+  }
+  return message;
 }
 
 export async function saveAppSettings(input: {
@@ -25,6 +33,17 @@ export async function saveAppSettings(input: {
     pricePerKm: input.pricePerKm,
     updatedAt: Date.now(),
   });
+  invalidateDirectory();
+}
+
+export async function markDemoRequestRead(id: string) {
+  if (!id || /[.#$[\]/]/.test(id)) throw new Error("Invalid demo request id");
+  await requireAdminUser();
+  const db = getClientDb();
+  const snap = await get(ref(db, `demoRequests/${id}`));
+  if (!snap.exists()) throw new Error("Demo request not found");
+  await update(ref(db, `demoRequests/${id}`), { readAt: Date.now() });
+  invalidateDirectory();
 }
 
 export async function submitLoadReview(input: {
@@ -94,4 +113,5 @@ export async function submitLoadReview(input: {
       },
     },
   });
+  invalidateDirectory();
 }

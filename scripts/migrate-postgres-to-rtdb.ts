@@ -1,11 +1,10 @@
 import "dotenv/config";
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pg from "pg";
-import { getApps, initializeApp, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getDatabase, type Database } from "firebase-admin/database";
+import { initAdminApp } from "./admin-sdk";
 import { buildRtdbPayload, rtdbKey, type PgTables, type RtdbPayload, type Row } from "./map-to-rtdb";
 
 const ALLOWED_MIME = new Set([
@@ -23,40 +22,6 @@ function pgUrl(raw: string) {
   const url = new URL(raw);
   url.searchParams.delete("schema");
   return url.toString();
-}
-
-function serviceAccount() {
-  const inline = process.env.FIREBASE_SERVICE_ACCOUNT?.trim();
-  const file = process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim();
-  if (!inline && !file) {
-    throw new Error("Set FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_PATH.");
-  }
-  const raw = inline
-    ? inline.startsWith("{")
-      ? inline
-      : Buffer.from(inline, "base64").toString("utf8")
-    : readFileSync(file!, "utf8");
-  const json = JSON.parse(raw) as {
-    project_id?: string;
-    projectId?: string;
-    client_email?: string;
-    clientEmail?: string;
-    private_key?: string;
-    privateKey?: string;
-  };
-  const projectId = json.projectId || json.project_id;
-  const clientEmail = json.clientEmail || json.client_email;
-  const privateKey = (json.privateKey || json.private_key || "").replace(/\\n/g, "\n");
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error("Service account JSON is missing project_id, client_email, or private_key.");
-  }
-  return { projectId, clientEmail, privateKey };
-}
-
-function databaseUrl() {
-  const url = process.env.FIREBASE_DATABASE_URL || process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL;
-  if (!url) throw new Error("Set FIREBASE_DATABASE_URL.");
-  return url;
 }
 
 async function readTable(client: pg.Client, table: string): Promise<Row[]> {
@@ -162,7 +127,7 @@ async function importMedia(db: Database, payload: RtdbPayload) {
   return { stored, skipped };
 }
 
-async function updateMap(db: Database, nodePath: string, value: Record<string, unknown>) {
+async function updateMap(db: Database, nodePath: string, value: object) {
   const entries = Object.entries(value);
   if (!entries.length) return;
   for (let index = 0; index < entries.length; index += 40) {
@@ -192,6 +157,7 @@ async function writePayload(db: Database, payload: RtdbPayload) {
   await updateMap(db, "liveLocations", payload.liveLocations);
   await updateMap(db, "locationHistory", payload.locationHistory);
   await updateMap(db, "admins", payload.admins);
+  await updateMap(db, "adminUsers", payload.adminUsers);
   await updateMap(db, "demoRequests", payload.demoRequests);
   for (const [uid, count] of Object.entries(payload.counters.users)) {
     await setAtLeast(db, `counters/users/${uid}`, count);
@@ -259,6 +225,7 @@ function summarize(payload: RtdbPayload) {
       {
         users: Object.keys(payload.users).length,
         admins: Object.keys(payload.admins).length,
+        adminUsers: Object.keys(payload.adminUsers).length,
         brokers: Object.keys(payload.brokers).length,
         drivers: Object.keys(payload.drivers).length,
         customers: Object.keys(payload.customers).length,
@@ -321,9 +288,7 @@ async function main() {
     return;
   }
 
-  if (!getApps().length) {
-    initializeApp({ credential: cert(serviceAccount()), databaseURL: databaseUrl() });
-  }
+  initAdminApp();
   const db = getDatabase();
   await importAuthUsers(payload);
   const media = await importMedia(db, payload);
@@ -331,7 +296,7 @@ async function main() {
   await writePayload(db, payload);
   console.log("Realtime Database import finished.");
   if (!Object.keys(payload.admins).length) {
-    console.log("No ADMIN users were found. Run npm run db:seed to create /admins/{uid}.");
+    console.log("No ADMIN users were found. Run npm run db:seed to create the first admin.");
   }
 }
 
