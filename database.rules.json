@@ -1,0 +1,393 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "admins": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
+    },
+    "settings": {
+      ".read": true,
+      ".write": "root.child('admins').child(auth.uid).val() === true"
+    },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid || root.child('admins').child(auth.uid).val() === true",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['name','phone','role'])",
+        "name": {
+          ".read": "auth != null",
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "locale": {
+          ".read": "auth != null",
+          ".validate": "newData.val() === 'en' || newData.val() === 'am'"
+        },
+        "phone": {
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        },
+        "email": {
+          ".validate": "newData.isString() && newData.val().length <= 200"
+        },
+        "role": {
+          ".validate": "(!data.exists() && auth.token.email.beginsWith(newData.val().toLowerCase() + '.')) || newData.val() === data.val()"
+        },
+        "authEmail": {
+          ".validate": "newData.val() === auth.token.email"
+        },
+        "imageUrl": {
+          ".validate": "newData.isString()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "brokers": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "root.child('users').child($uid).child('role').val() === 'BROKER' || newData.parent().parent().child('users').child($uid).child('role').val() === 'BROKER'",
+        "agentId": {
+          ".validate": "root.child('agentCodes').child(newData.val()).val() === $uid"
+        },
+        "company": {
+          ".validate": "newData.isString()"
+        },
+        "referredByEmail": {
+          ".validate": "newData.isString()"
+        },
+        "branding": {
+          "title": {
+            ".validate": "newData.isString() && newData.val().length <= 80"
+          },
+          "imageUrl": {
+            ".validate": "newData.isString()"
+          },
+          "backgroundColor": {
+            ".validate": "newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6,8}$/)"
+          },
+          "primaryColor": {
+            ".validate": "newData.isString() && newData.val().matches(/^#[0-9A-Fa-f]{6,8}$/)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "drivers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid || data.child('brokerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChild('brokerId') && (root.child('users').child($uid).child('role').val() === 'DRIVER' || newData.parent().parent().child('users').child($uid).child('role').val() === 'DRIVER')",
+        "brokerId": {
+          ".validate": "(data.exists() && newData.val() === data.val()) || (!data.exists() && root.child('brokers').child(newData.val()).exists())"
+        }
+      }
+    },
+    "customers": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid || data.child('brokerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChild('brokerId') && (root.child('users').child($uid).child('role').val() === 'CUSTOMER' || newData.parent().parent().child('users').child($uid).child('role').val() === 'CUSTOMER')",
+        "brokerId": {
+          ".validate": "(data.exists() && newData.val() === data.val()) || (!data.exists() && root.child('brokers').child(newData.val()).exists())"
+        }
+      }
+    },
+    "brokerDrivers": {
+      "$b": {
+        ".read": "auth != null && (auth.uid === $b || root.child('admins').child(auth.uid).val() === true)",
+        ".indexOn": [
+          "phone",
+          "nameLower"
+        ],
+        "$m": {
+          ".read": "auth != null && auth.uid === $m",
+          ".write": "auth != null && auth.uid === $m && (newData.parent().parent().parent().child('drivers').child($m).child('brokerId').val() === $b || !newData.exists())"
+        }
+      }
+    },
+    "brokerCustomers": {
+      "$b": {
+        ".read": "auth != null && (auth.uid === $b || root.child('admins').child(auth.uid).val() === true)",
+        ".indexOn": [
+          "phone",
+          "nameLower"
+        ],
+        "$m": {
+          ".read": "auth != null && auth.uid === $m",
+          ".write": "auth != null && auth.uid === $m && (newData.parent().parent().parent().child('customers').child($m).child('brokerId').val() === $b || !newData.exists())"
+        }
+      }
+    },
+    "agentCodes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.val() === auth.uid) || (data.val() === auth.uid && !newData.exists()))",
+        ".validate": "$code.matches(/^[0-9]{6}$/)"
+      }
+    },
+    "loginIndex": {
+      "$key": {
+        ".read": true,
+        "$role": {
+          ".write": "auth != null && ((!data.exists() && newData.val() === auth.token.email) || data.val() === auth.token.email)",
+          ".validate": "($role === 'BROKER' || $role === 'DRIVER' || $role === 'CUSTOMER') && newData.val().beginsWith($role.toLowerCase() + '.')"
+        }
+      }
+    },
+    "loads": {
+      ".read": "auth != null && query.orderByChild === 'brokerId' && query.equalTo === auth.uid",
+      ".indexOn": [
+        "brokerId",
+        "customerId",
+        "driverId"
+      ],
+      "$loadId": {
+        ".read": "auth != null && ((data.child('brokerId').val() === auth.uid || data.child('customerId').val() === auth.uid || data.child('driverId').val() === auth.uid || (!data.child('driverId').exists() && data.child('invitedDrivers').child(auth.uid).val() === true)) || root.child('admins').child(auth.uid).val() === true)",
+        ".write": "auth != null && (newData.exists() || root.child('admins').child(auth.uid).val() === true) && ((!data.exists() && newData.child('createdBy').val() === auth.uid && newData.parent().parent().child('counters').child('users').child(auth.uid).val() === (root.child('counters').child('users').child(auth.uid).exists() ? root.child('counters').child('users').child(auth.uid).val() : 0) + 1 && (newData.child('customerId').val() === auth.uid || (newData.child('brokerId').val() === auth.uid && (newData.child('paymentReceiptUrl').exists() || (root.child('counters').child('users').child(auth.uid).exists() ? root.child('counters').child('users').child(auth.uid).val() : 0) < (root.child('settings').child('freeLoadLimit').exists() ? root.child('settings').child('freeLoadLimit').val() : 3))))) || (data.child('brokerId').val() === auth.uid || data.child('customerId').val() === auth.uid || data.child('driverId').val() === auth.uid || (!data.child('driverId').exists() && data.child('invitedDrivers').child(auth.uid).val() === true)) || root.child('admins').child(auth.uid).val() === true)",
+        ".validate": "newData.hasChildren(['referenceNo','status','brokerId','customerId','createdBy','createdAt'])",
+        "referenceNo": {
+          ".validate": "newData.isString() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true)"
+        },
+        "createdBy": {
+          ".validate": "newData.isString() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true) && (root.child('admins').child(auth.uid).val() === true || newData.val() === auth.uid)"
+        },
+        "brokerId": {
+          ".validate": "newData.isString() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true)"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true)"
+        },
+        "status": {
+          ".validate": "newData.isString() && newData.val().matches(/^(PENDING|CREATED|ASSIGNED|ACCEPTED|REJECTED|IN_TRANSIT|DELIVERED|CANCELLED)$/) && (newData.val() === data.val() || root.child('admins').child(auth.uid).val() === true || (!data.parent().exists() && newData.parent().child('brokerId').val() === auth.uid && (newData.val() === 'CREATED' || newData.val() === 'PENDING')) || (!data.parent().exists() && newData.parent().child('customerId').val() === auth.uid && newData.val() === 'PENDING') || ((newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())) && newData.val() === 'ASSIGNED' && newData.parent().child('driverId').exists()) || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'PENDING' || data.parent().child('status').val() === 'CANCELLED') && newData.val() === 'PENDING' && newData.parent().child('paymentReceiptUrl').exists()) || ((newData.parent().child('brokerId').val() === auth.uid || newData.parent().child('customerId').val() === auth.uid) && newData.val() === 'CANCELLED' && newData.parent().child('deletedAt').exists()) || (data.parent().child('driverId').val() === auth.uid && data.parent().child('status').val() === 'ASSIGNED' && (newData.val() === 'ACCEPTED' || newData.val() === 'REJECTED')) || (data.parent().child('driverId').val() === auth.uid && data.parent().child('status').val() === 'ACCEPTED' && newData.val() === 'IN_TRANSIT') || (data.parent().child('driverId').val() === auth.uid && data.parent().child('status').val() === 'IN_TRANSIT' && newData.val() === 'DELIVERED' && newData.parent().child('pod').exists()) || ((!data.parent().child('driverId').exists() && newData.parent().child('driverId').val() === auth.uid && data.parent().child('invitedDrivers').child(auth.uid).val() === true && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists()))) && newData.val() === 'ACCEPTED'))"
+        },
+        "pickupAddress": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "deliveryAddress": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "pickupDate": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "cargoDescription": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "equipmentType": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "paymentTerm": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "otherPayment": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "notes": {
+          ".validate": "newData.isString() && newData.val().length < 2000 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "pickupLat": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "pickupLng": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "deliveryLat": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "deliveryLng": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "weightLbs": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "rate": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "totalPrice": {
+          ".validate": "newData.isNumber() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "systemPrice": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "distanceKm": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "durationMin": {
+          ".validate": "newData.isNumber() && newData.val() >= 0 && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "distanceEstimated": {
+          ".validate": "newData.isBoolean() && (!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "deliveryDate": {
+          ".validate": "newData.isString() && ((!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists()))) || (data.parent().child('driverId').val() === auth.uid && newData.parent().child('pod').exists()))"
+        },
+        "customerId": {
+          ".validate": "newData.isString() && (root.child('admins').child(auth.uid).val() === true || (!data.parent().exists() && (newData.parent().child('brokerId').val() === auth.uid ? root.child('brokerCustomers').child(auth.uid).child(newData.val()).exists() : newData.val() === auth.uid && root.child('customers').child(auth.uid).child('brokerId').val() === newData.parent().child('brokerId').val())) || ((newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())) && root.child('brokerCustomers').child(auth.uid).child(newData.val()).exists()))"
+        },
+        "customerSnap": {
+          ".validate": "(!data.parent().exists() || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())))"
+        },
+        "driverId": {
+          ".validate": "newData.isString() && (root.child('admins').child(auth.uid).val() === true || ((newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())) && root.child('brokerDrivers').child(auth.uid).child(newData.val()).exists()) || (!data.parent().child('driverId').exists() && newData.parent().child('driverId').val() === auth.uid && data.parent().child('invitedDrivers').child(auth.uid).val() === true && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists()))))"
+        },
+        "driverSnap": {
+          ".validate": "(root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists())) && !(data.parent().child('deletionRequestedAt').exists() && !data.parent().child('deletedAt').exists())) || (!data.parent().child('driverId').exists() && newData.parent().child('driverId').val() === auth.uid && data.parent().child('invitedDrivers').child(auth.uid).val() === true && (data.parent().child('status').val() === 'CREATED' || data.parent().child('status').val() === 'REJECTED' || data.parent().child('status').val() === 'ASSIGNED' || (data.parent().child('status').val() === 'PENDING' && !data.parent().child('paymentReceiptUrl').exists()))))"
+        },
+        "invitedDrivers": {
+          "$d": {
+            ".validate": "newData.val() === true && (root.child('admins').child(auth.uid).val() === true || ((newData.parent().parent().child('brokerId').val() === auth.uid && (data.parent().parent().child('status').val() === 'CREATED' || data.parent().parent().child('status').val() === 'REJECTED' || data.parent().parent().child('status').val() === 'ASSIGNED' || (data.parent().parent().child('status').val() === 'PENDING' && !data.parent().parent().child('paymentReceiptUrl').exists())) && !(data.parent().parent().child('deletionRequestedAt').exists() && !data.parent().parent().child('deletedAt').exists())) && root.child('brokerDrivers').child(auth.uid).child($d).exists()))"
+          }
+        },
+        "paymentReceiptUrl": {
+          ".validate": "newData.isString() && (!data.parent().exists() && newData.parent().child('brokerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && (data.parent().child('status').val() === 'PENDING' || data.parent().child('status').val() === 'CANCELLED')))"
+        },
+        "receiptReview": {
+          ".validate": "root.child('admins').child(auth.uid).val() === true || (newData.parent().child('brokerId').val() === auth.uid && newData.child('state').val() === 'pending')"
+        },
+        "pod": {
+          ".validate": "root.child('admins').child(auth.uid).val() === true || (data.parent().child('driverId').val() === auth.uid && data.parent().child('status').val() === 'IN_TRANSIT' && !data.exists() && newData.hasChildren(['photoUrl','signatureUrl','recipientName']))"
+        },
+        "lastLocation": {
+          ".validate": "data.parent().child('driverId').val() === auth.uid && newData.child('lat').isNumber() && newData.child('lng').isNumber()"
+        },
+        "documents": {
+          "$doc": {
+            ".validate": "(!data.exists() && newData.child('by').val() === auth.uid && newData.child('url').isString()) || root.child('admins').child(auth.uid).val() === true"
+          }
+        },
+        "deletionRequestedAt": {
+          ".validate": "root.child('admins').child(auth.uid).val() === true || ((newData.parent().child('brokerId').val() === auth.uid || newData.parent().child('customerId').val() === auth.uid) && !data.exists() && !data.parent().child('deletedAt').exists())"
+        },
+        "deletionRequestedBy": {
+          ".validate": "root.child('admins').child(auth.uid).val() === true || ((newData.parent().child('brokerId').val() === auth.uid || newData.parent().child('customerId').val() === auth.uid) && !data.exists() && newData.val() === auth.uid)"
+        },
+        "deletedAt": {
+          ".validate": "root.child('admins').child(auth.uid).val() === true || ((newData.parent().child('brokerId').val() === auth.uid || newData.parent().child('customerId').val() === auth.uid) && !data.exists() && data.parent().child('deletionRequestedAt').exists() && data.parent().child('deletionRequestedBy').val() !== auth.uid)"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "userLoads": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$loadId": {
+          ".write": "auth != null && (newData.parent().parent().parent().child('loads').child($loadId).child('brokerId').val() === auth.uid || root.child('loads').child($loadId).child('brokerId').val() === auth.uid || ($uid === auth.uid && newData.exists()) || (newData.parent().parent().parent().child('loads').child($loadId).child('createdBy').val() === auth.uid && !root.child('loads').child($loadId).exists()))",
+          ".validate": "(newData.val() === 'broker' && newData.parent().parent().parent().child('loads').child($loadId).child('brokerId').val() === $uid) || (newData.val() === 'customer' && newData.parent().parent().parent().child('loads').child($loadId).child('customerId').val() === $uid) || (newData.val() === 'driver' && newData.parent().parent().parent().child('loads').child($loadId).child('driverId').val() === $uid) || (newData.val() === 'invited' && newData.parent().parent().parent().child('loads').child($loadId).child('invitedDrivers').child($uid).val() === true)"
+        }
+      }
+    },
+    "counters": {
+      "loadRef": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+      },
+      "users": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+        }
+      },
+      "devices": {
+        "$key": {
+          ".read": "auth != null",
+          ".write": "auth != null",
+          ".validate": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+        }
+      }
+    },
+    "notifications": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".indexOn": [
+          "createdAt",
+          "read"
+        ],
+        "$nid": {
+          ".write": "auth != null && ((!data.exists() && newData.child('from').val() === auth.uid) || ($uid === auth.uid && newData.exists()))",
+          ".validate": "newData.hasChildren(['type','title','body','read','createdAt'])",
+          "read": {
+            ".validate": "newData.isBoolean()"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+          }
+        }
+      }
+    },
+    "liveLocations": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('drivers').child($uid).child('brokerId').val() === auth.uid || root.child('loads').child(data.child('loadId').val()).child('customerId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('at').isNumber()"
+      }
+    },
+    "locationHistory": {
+      "$loadId": {
+        ".read": "auth != null && (root.child('loads').child($loadId).child('brokerId').val() === auth.uid || root.child('loads').child($loadId).child('customerId').val() === auth.uid || root.child('loads').child($loadId).child('driverId').val() === auth.uid || root.child('admins').child(auth.uid).val() === true)",
+        "$p": {
+          ".write": "auth != null && !data.exists() && root.child('loads').child($loadId).child('driverId').val() === auth.uid",
+          ".validate": "newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('at').isNumber()"
+        }
+      }
+    },
+    "media": {
+      "$mediaId": {
+        "meta": {
+          ".read": "auth != null && data.exists()",
+          ".write": "auth != null && !data.exists() && $mediaId.beginsWith(auth.uid + '_')",
+          ".validate": "newData.hasChildren(['ownerUid','kind','mime','size','chunkCount','createdAt']) && root.child('mediaChunks').child($mediaId).child('0').exists()",
+          "ownerUid": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "kind": {
+            ".validate": "newData.isString() && newData.val().matches(/^(avatar|truck|branding|pod|receipt|document)$/)"
+          },
+          "loadId": {
+            ".validate": "newData.isString() && (root.child('loads').child(newData.val()).child('brokerId').val() === auth.uid || root.child('loads').child(newData.val()).child('customerId').val() === auth.uid || root.child('loads').child(newData.val()).child('driverId').val() === auth.uid)"
+          },
+          "mime": {
+            ".validate": "newData.isString() && (newData.val().matches(/^image\\/(jpeg|png|webp|gif|heic)$/) || newData.val() === 'application/pdf')"
+          },
+          "size": {
+            ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 5242880"
+          },
+          "chunkCount": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 20 && newData.val() * 349528 >= newData.parent().child('size').val() * 4 / 3"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    },
+    "mediaChunks": {
+      "$mediaId": {
+        ".read": "auth != null && root.child('media').child($mediaId).child('meta').exists()",
+        "$i": {
+          ".write": "auth != null && !data.exists() && $mediaId.beginsWith(auth.uid + '_') && !root.child('media').child($mediaId).child('meta').exists()",
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 349528 && $i.matches(/^([0-9]|1[0-9])$/)"
+        }
+      }
+    }
+  }
+}

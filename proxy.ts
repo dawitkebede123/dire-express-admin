@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import NextAuth from "next-auth";
-import { authConfig } from "@/lib/auth.config";
-
-const { auth } = NextAuth(authConfig);
+import { openSession, SESSION_COOKIE } from "@/lib/session-token";
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -16,12 +13,12 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (pathname.startsWith("/api/auth")) {
+  if (pathname === "/api/session") {
     return NextResponse.next();
   }
 
-  const session = await auth();
-  const isAdmin = session?.user?.role === "ADMIN";
+  const session = await openSession(request.cookies.get(SESSION_COOKIE)?.value);
+  const isAdmin = Boolean(session);
 
   if (pathname === "/login") {
     if (isAdmin) {
@@ -33,13 +30,6 @@ export async function proxy(request: NextRequest) {
   if (!session) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    return NextResponse.redirect(new URL("/login", request.url));
-  }
-
-  if (!isAdmin) {
-    if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     return NextResponse.redirect(new URL("/login", request.url));
   }

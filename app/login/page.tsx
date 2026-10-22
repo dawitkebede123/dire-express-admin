@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { toast } from "sonner";
+import { signInAdmin } from "@/lib/rtdb/sign-in";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,16 +14,15 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const res = await signIn("credentials", { email, password, redirect: false });
-    setLoading(false);
-
-    if (res?.error) {
-      toast.error("Invalid admin credentials");
-      return;
+    try {
+      await signInAdmin(email, password);
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid admin credentials");
+    } finally {
+      setLoading(false);
     }
-
-    router.push("/");
-    router.refresh();
   }
 
   return (

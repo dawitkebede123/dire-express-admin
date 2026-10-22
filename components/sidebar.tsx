@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ClipboardCheck,
   Inbox,
@@ -29,6 +28,7 @@ export function Sidebar({
   unreadDemoCount?: number;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
 
   return (
     <aside className="flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -68,8 +68,11 @@ export function Sidebar({
         <button
           type="button"
           onClick={async () => {
-            await signOut({ redirect: false });
-            window.location.assign("/login");
+            await fetch("/api/session", { method: "DELETE" });
+            const { endClientSession } = await import("@/lib/firebase/client");
+            await endClientSession();
+            router.push("/login");
+            router.refresh();
           }}
           className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-sidebar-muted hover:bg-white/5 hover:text-white"
         >

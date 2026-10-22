@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { saveAppSettings } from "@/lib/rtdb/client-writes";
 
 export function SettingsForm({
   freeLoadLimit,
@@ -21,39 +22,42 @@ export function SettingsForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const freeLoadLimit = Number(limitValue);
-    const basePrice = Number(baseValue);
-    const pricePerKm = Number(perKmValue);
+    const nextLimit = Number(limitValue);
+    const nextBase = Number(baseValue);
+    const nextPerKm = Number(perKmValue);
 
-    if (!Number.isInteger(freeLoadLimit) || freeLoadLimit < 1 || freeLoadLimit > 1000) {
+    if (!Number.isInteger(nextLimit) || nextLimit < 1 || nextLimit > 1000) {
       toast.error("Enter a whole number between 1 and 1000 for the free load limit");
       return;
     }
-    if (!Number.isFinite(basePrice) || basePrice < 0 || basePrice > 100_000) {
+    if (!Number.isFinite(nextBase) || nextBase < 0 || nextBase > 100_000) {
       toast.error("Enter a base price between 0 and 100000 ETB");
       return;
     }
-    if (!Number.isFinite(pricePerKm) || pricePerKm < 0 || pricePerKm > 1_000) {
+    if (!Number.isFinite(nextPerKm) || nextPerKm < 0 || nextPerKm > 1_000) {
       toast.error("Enter a per-km rate between 0 and 1000 ETB");
       return;
     }
 
     setSaving(true);
-    const res = await fetch("/api/settings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ freeLoadLimit, basePrice, pricePerKm }),
-    });
-    setSaving(false);
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      toast.error(data.error ?? "Failed to save settings");
-      return;
+    try {
+      await saveAppSettings({
+        freeLoadLimit: nextLimit,
+        basePrice: nextBase,
+        pricePerKm: nextPerKm,
+      });
+      toast.success("Settings saved");
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save settings";
+      toast.error(
+        message.includes("PERMISSION_DENIED")
+          ? "Realtime Database rejected the update. Confirm /admins/{uid} is true."
+          : message
+      );
+    } finally {
+      setSaving(false);
     }
-
-    toast.success("Settings saved");
-    router.refresh();
   }
 
   return (

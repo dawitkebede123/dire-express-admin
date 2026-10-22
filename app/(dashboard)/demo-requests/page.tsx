@@ -1,15 +1,11 @@
-import { db } from "@/lib/db";
+import { getDemoRequests } from "@/lib/data";
 import { MarkReadButton } from "./mark-read-button";
 
 export const dynamic = "force-dynamic";
 
 export default async function DemoRequestsPage() {
-  const requests = await db.demoRequest.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-
-  const unread = requests.filter((r) => !r.readAt).length;
+  const requests = await getDemoRequests();
+  const unread = requests.filter((request) => !request.readAt).length;
 
   return (
     <div>

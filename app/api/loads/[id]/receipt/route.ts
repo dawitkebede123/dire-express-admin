@@ -1,32 +1,35 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { requireAdminSession } from "@/lib/api-auth";
+import { adminDb } from "@/lib/firebase/admin";
 import { loadReceipt } from "@/lib/receipt";
+import { mediaIdFromStoredUrl, readChunkedMedia } from "@/lib/rtdb/media";
+
+export const runtime = "nodejs";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const { error } = await requireAdminSession();
+  if (error) return error;
 
   const { id } = await params;
-  const load = await db.load.findUnique({
-    where: { id },
-    select: { paymentReceiptUrl: true },
-  });
-
-  if (!load) {
+  if (!id || /[.#$[\]/]/.test(id)) {
     return NextResponse.json({ error: "Load not found" }, { status: 404 });
   }
 
-  if (!load.paymentReceiptUrl) {
+  const loadSnap = await adminDb().ref(`loads/${id}`).get();
+  if (!loadSnap.exists()) {
+    return NextResponse.json({ error: "Load not found" }, { status: 404 });
+  }
+
+  const storedUrl = loadSnap.child("paymentReceiptUrl").val();
+  if (typeof storedUrl !== "string" || !storedUrl) {
     return NextResponse.json({ error: "No receipt attached" }, { status: 404 });
   }
 
-  const receipt = await loadReceipt(load.paymentReceiptUrl);
+  const mediaId = mediaIdFromStoredUrl(storedUrl);
+  const receipt = mediaId ? await readChunkedMedia(mediaId) : await loadReceipt(storedUrl);
   if (!receipt) {
     return NextResponse.json({ error: "Receipt file not found" }, { status: 404 });
   }

@@ -1,26 +1,10 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { getOverviewCounts } from "@/lib/data";
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminHomePage() {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-
-  const [pendingCount, approvedToday, agentCount] = await Promise.all([
-    db.load.count({
-      where: {
-        paymentReceiptUrl: { not: null },
-        reviewedAt: null,
-        status: { in: ["PENDING", "CREATED"] },
-      },
-    }),
-    db.load.count({
-      where: {
-        status: "CREATED",
-        reviewedAt: { gte: startOfToday },
-      },
-    }),
-    db.brokerProfile.count(),
-  ]);
+  const { pendingCount, approvedToday, agentCount } = await getOverviewCounts();
 
   const cards = [
     { label: "Pending receipts", value: pendingCount, href: "/loads" },

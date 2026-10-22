@@ -1,21 +1,24 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { requireAdminSession } from "@/lib/api-auth";
+import { markDemoRequestRead } from "@/lib/data";
+
+export const runtime = "nodejs";
 
 export async function POST(
   _request: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { error } = await requireAdminSession();
+  if (error) return error;
 
   const { id } = await context.params;
-  await db.demoRequest.update({
-    where: { id },
-    data: { readAt: new Date() },
-  });
+  try {
+    await markDemoRequestRead(id);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Could not update demo request";
+    const status = message === "Demo request not found" ? 404 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
 
   return NextResponse.json({ ok: true });
 }

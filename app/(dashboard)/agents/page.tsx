@@ -1,43 +1,9 @@
-import { db } from "@/lib/db";
+import { getAgentScores } from "@/lib/data";
 
-function agentScore(ownDelivered: number, referredDelivered: number) {
-  return ownDelivered + referredDelivered;
-}
+export const dynamic = "force-dynamic";
 
 export default async function AgentsPage() {
-  const agents = await db.brokerProfile.findMany({
-    include: {
-      user: { select: { name: true, email: true, phone: true } },
-      referredBy: { include: { user: { select: { name: true, email: true } } } },
-      referrals: {
-        include: {
-          loads: { where: { status: "DELIVERED" }, select: { id: true } },
-        },
-      },
-      loads: { where: { status: "DELIVERED" }, select: { id: true } },
-    },
-    orderBy: { user: { name: "asc" } },
-  });
-
-  const rows = agents
-    .map((agent) => {
-      const delivered = agent.loads.length;
-      const referredDelivered = agent.referrals.reduce(
-        (sum, referral) => sum + referral.loads.length,
-        0
-      );
-      return {
-        id: agent.id,
-        name: agent.user.name,
-        email: agent.user.email,
-        company: agent.company,
-        referee: agent.referredBy?.user.name ?? "—",
-        referralCount: agent.referrals.length,
-        delivered,
-        score: agentScore(delivered, referredDelivered),
-      };
-    })
-    .sort((a, b) => b.score - a.score);
+  const rows = await getAgentScores();
 
   return (
     <div>
@@ -74,7 +40,7 @@ export default async function AgentsPage() {
                     <span className="block text-xs text-muted">{row.email ?? "—"}</span>
                   </td>
                   <td className="px-4 py-3">{row.company ?? "—"}</td>
-                  <td className="px-4 py-3">{row.referee}</td>
+                  <td className="px-4 py-3">{row.referee?.name ?? "—"}</td>
                   <td className="px-4 py-3">{row.referralCount}</td>
                   <td className="px-4 py-3">{row.delivered}</td>
                   <td className="px-4 py-3 font-semibold">{row.score}</td>

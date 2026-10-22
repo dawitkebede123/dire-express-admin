@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { db } from "@/lib/db";
+import { getLoad } from "@/lib/data";
 import { formatCurrency, formatDateTime, toNumber } from "@/lib/utils";
 import { ReceiptViewer } from "@/components/receipt-viewer";
 import { ReviewActions } from "@/components/review-actions";
+
+export const dynamic = "force-dynamic";
 
 export default async function LoadReviewPage({
   params,
@@ -11,13 +13,7 @@ export default async function LoadReviewPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const load = await db.load.findUnique({
-    where: { id },
-    include: {
-      broker: { include: { user: { select: { name: true, email: true, phone: true } } } },
-      customer: { include: { user: { select: { name: true } } } },
-    },
-  });
+  const load = await getLoad(id);
 
   if (!load) notFound();
 
@@ -69,7 +65,13 @@ export default async function LoadReviewPage({
               <Row label="Rate" value={formatCurrency(toNumber(load.rate))} />
             </dl>
           </section>
-          {awaitingReview ? <ReviewActions loadId={load.id} /> : (
+          {awaitingReview ? (
+            <ReviewActions
+              loadId={load.id}
+              brokerId={load.brokerId}
+              referenceNo={load.referenceNo}
+            />
+          ) : (
             <p className="rounded-xl border border-border bg-card p-5 text-sm text-muted">
               This load is no longer waiting for receipt approval.
               {load.rejectionReason ? ` Reason: ${load.rejectionReason}` : ""}

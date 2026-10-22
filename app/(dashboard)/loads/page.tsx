@@ -1,20 +1,11 @@
 import Link from "next/link";
-import { db } from "@/lib/db";
+import { getPendingLoads } from "@/lib/data";
 import { formatCurrency, formatDateTime, toNumber } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 export default async function PendingLoadsPage() {
-  const loads = await db.load.findMany({
-    where: {
-      paymentReceiptUrl: { not: null },
-      reviewedAt: null,
-      status: { in: ["PENDING", "CREATED"] },
-    },
-    include: {
-      broker: { include: { user: { select: { name: true, email: true } } } },
-      customer: { include: { user: { select: { name: true } } } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const loads = await getPendingLoads();
 
   return (
     <div>

@@ -1,21 +1,10 @@
-import { db } from "@/lib/db";
+import { getSettings } from "@/lib/data";
 import { SettingsForm } from "@/components/settings-form";
 
-const DEFAULT_FREE_LOAD_LIMIT = 3;
-const DEFAULT_BASE_PRICE = 50;
-const DEFAULT_PRICE_PER_KM = 1;
+export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const settings = await db.appSettings.upsert({
-    where: { id: "default" },
-    update: {},
-    create: {
-      id: "default",
-      freeLoadLimit: DEFAULT_FREE_LOAD_LIMIT,
-      basePrice: DEFAULT_BASE_PRICE,
-      pricePerKm: DEFAULT_PRICE_PER_KM,
-    },
-  });
+  const settings = await getSettings();
 
   return (
     <div>
@@ -25,8 +14,8 @@ export default async function SettingsPage() {
       </p>
       <SettingsForm
         freeLoadLimit={settings.freeLoadLimit}
-        basePrice={Number(settings.basePrice)}
-        pricePerKm={Number(settings.pricePerKm)}
+        basePrice={settings.basePrice}
+        pricePerKm={settings.pricePerKm}
       />
     </div>
   );
