@@ -41,8 +41,9 @@ export function toNumber(value: unknown): number | null {
 
 export function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) return null;
-  if (/^https?:\/\//i.test(url) || url.startsWith("data:")) return url;
-  const origin = (process.env.MAIN_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  if (/^https?:\/\//i.test(url) || url.startsWith("data:") || url.startsWith("blob:")) return url;
+  const origin = process.env.NEXT_PUBLIC_MAIN_APP_URL?.replace(/\/$/, "");
+  if (!origin) return null;
   return `${origin}${url.startsWith("/") ? url : `/${url}`}`;
 }
 

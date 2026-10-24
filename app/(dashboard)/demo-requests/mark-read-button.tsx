@@ -1,17 +1,18 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
+import { markDemoRequestRead, permissionMessage } from "@/lib/rtdb/client-writes";
 
 export function MarkReadButton({ id }: { id: string }) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function markRead() {
     setLoading(true);
     try {
-      await fetch(`/api/demo-requests/${id}/read`, { method: "POST" });
-      router.refresh();
+      await markDemoRequestRead(id);
+    } catch (error) {
+      toast.error(permissionMessage(error, "Could not mark this request read"));
     } finally {
       setLoading(false);
     }

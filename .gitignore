@@ -4,6 +4,11 @@
 /build
 .DS_Store
 *.pem
+.firebase/
+firebase-debug.log
+*-firebase-adminsdk-*.json
+service-account*.json
+/secrets/
 npm-debug.log*
 .env*
 !.env.example
