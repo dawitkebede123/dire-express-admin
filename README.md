@@ -115,10 +115,40 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 | `settings/payment` | `{ phoneNumber, updatedAt, updatedBy }`. Public read. `updatedAt` is `ServerValue.TIMESTAMP`. |
 | `admins/{uid}` | `true`. The mobile rules' admin check. |
 | `demoRequests/{id}` | Landing-page leads (`email`, `source`, `createdAt`, `readAt`) |
+| `newsletter/template` | `{ subject, html, updatedAt, updatedBy }`. Admin read and write. `updatedAt` is `ServerValue.TIMESTAMP` and `updatedBy` is `auth.uid`. |
+| `newsletter/campaigns/{id}` | One send run: `{ subject, total, sent, failed, createdAt, createdBy }`. `total` is how many recipients were included. A stopped run can have `sent + failed` less than `total`. |
 
 `users.role` of `ADMIN` is the mobile user role. `adminUsers.role` is only `superadmin` or `admin`.
 
 `receiptReview` is `{ state: "pending" | "approved" | "rejected", reviewedAt, reviewedBy, rejectionReason }`. Approving sets the load to `CREATED`. Rejecting sets it to `CANCELLED`. Both writes are one client `update()` of `loads/{id}/status`, `loads/{id}/receiptReview`, `loads/{id}/updatedAt`, and `notifications/{brokerUid}/{id}` (`from` is the admin uid). Copy is Amharic when `users/{broker}/locale` is `am`.
+
+## Newsletter
+
+The Newsletter page (`/newsletter`) edits `newsletter/template` and sends the HTML from the signed-in admin's browser. There is no server, no Cloud Function, and no EmailJS. SheetJS (`xlsx`) reads `.xlsx`, `.xls`, and `.csv` files in the browser. The email column is a header containing "email", otherwise the first column that contains email addresses. A name column, when present, replaces `{{name}}` with the full name and `{{first_name}}` with the first word. When the sheet has no name, both placeholders use the mailbox name (the part before `@`, with `.` and `_` turned into spaces).
+
+Download HTML saves the current template. Copy recipients (BCC) copies the valid addresses, separated by commas, so they can be pasted into a mail client.
+
+### Google Cloud setup (project dire-express)
+
+1. Google Cloud console → APIs & Services → Library. Enable the **Gmail API** on project **dire-express**.
+2. APIs & Services → OAuth consent screen:
+   - User type: **External**
+   - Publishing status: **Testing**
+   - Add the Gmail account that will send the newsletter as a **test user**. In Testing mode only test users can grant access, and the consent screen can stay unpublished.
+   - Scopes: `https://www.googleapis.com/auth/gmail.send` (send mail) and `https://www.googleapis.com/auth/userinfo.email` (so the page can show the sender address).
+3. APIs & Services → Credentials → Create credentials → **OAuth client ID** → Application type **Web application**.
+   - Authorized JavaScript origins:
+     - `https://dire-express-admin.web.app`
+     - `http://localhost:3000`
+   - `npm run dev` listens on port 3001, so add `http://localhost:3001` as well when you send from the local dashboard.
+   - No client secret is used. This site is a static export.
+4. Put that client ID in `NEXT_PUBLIC_GOOGLE_OAUTH_CLIENT_ID`. It is inlined by `npm run build`, so set it before `npm run dev` and before `npm run deploy`.
+
+The page loads `https://accounts.google.com/gsi/client` and requests an access token with `google.accounts.oauth2.initTokenClient`. Each recipient is one `POST https://gmail.googleapis.com/gmail/v1/users/me/messages/send`. The body is `{ raw }`, where `raw` is the base64url RFC 2822 message: UTF-8 HTML body, subject encoded with RFC 2047. Sends are spaced about one every 1–2 seconds. If Gmail returns 401, the page requests a new token and retries that recipient.
+
+**Gmail daily limit:** a consumer Gmail account can send about **500 messages a day**. Past that, Gmail rejects further sends until the quota resets. The page warns when a list is over 500. Google Workspace limits are higher, but the same throttle and warning still apply.
+
+`newsletter` is admin-only: `adminUsers/{uid}/active === true` or `admins/{uid} === true`. The parent `settings` node is unchanged. There is no `settings/newsletterEmail` node.
 
 ## Rules
 

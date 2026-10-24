@@ -471,6 +471,57 @@
           ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 349528 && $i.matches(/^([0-9]|1[0-9])$/)"
         }
       }
+    },
+    "newsletter": {
+      ".read": "auth != null && (root.child('adminUsers').child(auth.uid).child('active').val() === true || root.child('admins').child(auth.uid).val() === true)",
+      ".write": "auth != null && (root.child('adminUsers').child(auth.uid).child('active').val() === true || root.child('admins').child(auth.uid).val() === true)",
+      "template": {
+        ".validate": "newData.hasChildren(['subject','html','updatedAt','updatedBy'])",
+        "subject": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+        },
+        "html": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 400000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() && newData.val() === now"
+        },
+        "updatedBy": {
+          ".validate": "newData.val() === auth.uid"
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "campaigns": {
+        "$id": {
+          ".validate": "newData.hasChildren(['subject','total','sent','failed','createdAt','createdBy'])",
+          "subject": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 200"
+          },
+          "total": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
+          },
+          "sent": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
+          },
+          "failed": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && newData.val() === now"
+          },
+          "createdBy": {
+            ".validate": "newData.val() === auth.uid"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "$other": {
+        ".validate": false
+      }
     }
   }
 }
