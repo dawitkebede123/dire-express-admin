@@ -1,4 +1,5 @@
 import { decodeHtmlText } from "@/lib/newsletter/blocks";
+import { applyNewsletterLinks } from "@/lib/newsletter/links";
 
 export const GMAIL_CLIP_BYTES = 100 * 1024;
 
@@ -52,7 +53,7 @@ export function ensureUnsubscribeFooter(html: string, sender: string) {
 }
 
 export function prepareOutgoingHtml(html: string, sender: string) {
-  return ensureUnsubscribeFooter(sanitizeNewsletterHtml(html), sender);
+  return ensureUnsubscribeFooter(sanitizeNewsletterHtml(applyNewsletterLinks(html)), sender);
 }
 
 export function htmlToPlainText(html: string) {

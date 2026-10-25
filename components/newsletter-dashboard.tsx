@@ -13,6 +13,7 @@ import { GMAIL_DAILY_LIMIT, runNewsletterCampaign, type SendState } from "@/lib/
 import { DEFAULT_NEWSLETTER_HTML, DEFAULT_NEWSLETTER_SUBJECT } from "@/lib/newsletter/default-template";
 import { newsletterSpamWarnings } from "@/lib/newsletter/deliverability";
 import { connectGmail, googleOAuthClientId, revokeGmailToken, sendGmailHtml, type GmailSession } from "@/lib/newsletter/gmail";
+import { applyNewsletterLinks } from "@/lib/newsletter/links";
 import { isTokenExpired } from "@/lib/newsletter/gmail-error";
 import { personalizeNewsletter } from "@/lib/newsletter/personalize";
 import { parseRecipientFile, type ParsedRecipient, type RecipientParseResult } from "@/lib/newsletter/recipients";
@@ -107,7 +108,7 @@ export function NewsletterDashboard() {
         if (cancelled) return;
         if (saved) {
           setSubject(saved.subject);
-          setHtml(saved.html);
+          setHtml(applyNewsletterLinks(saved.html));
           setUpdatedAt(saved.updatedAt);
         }
         setReady(true);
