@@ -11,7 +11,9 @@ import {
 } from "@/lib/newsletter/blocks";
 import { GMAIL_DAILY_LIMIT, runNewsletterCampaign, type SendState } from "@/lib/newsletter/campaign";
 import { DEFAULT_NEWSLETTER_HTML, DEFAULT_NEWSLETTER_SUBJECT } from "@/lib/newsletter/default-template";
+import { newsletterSpamWarnings } from "@/lib/newsletter/deliverability";
 import { connectGmail, googleOAuthClientId, revokeGmailToken, sendGmailHtml, type GmailSession } from "@/lib/newsletter/gmail";
+import { isTokenExpired } from "@/lib/newsletter/gmail-error";
 import { personalizeNewsletter } from "@/lib/newsletter/personalize";
 import { parseRecipientFile, type ParsedRecipient, type RecipientParseResult } from "@/lib/newsletter/recipients";
 import { permissionMessage } from "@/lib/rtdb/client-writes";
@@ -94,6 +96,7 @@ export function NewsletterDashboard() {
   const [session, setSession] = useState<GmailSession | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [testing, setTesting] = useState(false);
   const sessionRef = useRef<GmailSession | null>(null);
   const cancelRef = useRef(false);
 
@@ -222,7 +225,42 @@ export function NewsletterDashboard() {
     }
   }
 
+  async function handleSendTest() {
+    const subjectSnapshot = subject.trim();
+    const to = sessionRef.current?.email ?? "";
+    if (!subjectSnapshot || !to || sending || testing) return;
+    setTesting(true);
+    const message = personalizeNewsletter(
+      { subject: subjectSnapshot, html },
+      { email: to, name: previewName.trim() || "Dire Express" },
+    );
+    const sendOnce = async (forceRefresh: boolean) => {
+      const accessToken = await tokenFor(forceRefresh);
+      await sendGmailHtml({
+        accessToken,
+        to,
+        from: sessionRef.current?.email || to,
+        subject: message.subject,
+        html: message.html,
+      });
+    };
+    try {
+      try {
+        await sendOnce(false);
+      } catch (error) {
+        if (!isTokenExpired(error)) throw error;
+        await sendOnce(true);
+      }
+      toast.success(`Test sent to ${to}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Test send failed");
+    } finally {
+      setTesting(false);
+    }
+  }
+
   async function handleSend() {
+    if (testing) return;
     const queued = validRecipients.filter((row) => delivery[deliveryKey(row.email)]?.state !== "sent");
     const subjectSnapshot = subject.trim();
     if (!queued.length || !subjectSnapshot) return;
@@ -284,21 +322,25 @@ export function NewsletterDashboard() {
   }
 
   const sendLabel = sending ? "Stop" : retryFailed ? "Retry failed" : sentCount > 0 ? "Resume sending" : "Send with Gmail";
-  const canSend = Boolean(session) && !connecting && !parsing && remaining.length > 0 && Boolean(subject.trim());
+  const canSend =
+    Boolean(session) && !connecting && !parsing && !testing && remaining.length > 0 && Boolean(subject.trim());
+  const canTest = Boolean(session?.email) && !connecting && !sending && !testing && Boolean(subject.trim());
+  const spamWarnings = newsletterSpamWarnings({ subject, html });
 
   return (
     <div className="mx-auto max-w-6xl">
       <h1 className="text-2xl font-semibold">Newsletter</h1>
       <p className="mt-1 max-w-3xl text-sm text-muted">
         Edit the Dire Express newsletter, attach a recipient spreadsheet, and send it from Gmail in this browser.
-        Each message is one Gmail API call. {"{{name}}"} and {"{{first_name}}"} are filled from the optional name column.
+        Each message goes to one address in To. {"{{name}}"} and {"{{first_name}}"} both use the full trimmed name
+        cell. {"{{first_name}}"} is a compatibility alias for that same full name.
       </p>
 
       <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="text-sm font-semibold">Gmail sender</h2>
         <p className="mt-2 text-sm text-muted">
-          A regular Gmail account can send about {GMAIL_DAILY_LIMIT} messages a day. This page sends one message every 1–2
-          seconds. Messages past the daily limit are rejected until the quota resets.
+          A regular Gmail account can send about {GMAIL_DAILY_LIMIT} messages a day. This page sends about one message
+          every 3–5 seconds. Messages past the daily limit are rejected until the quota resets.
         </p>
         {!clientId ? (
           <p className="mt-3 text-sm text-danger">
@@ -315,7 +357,7 @@ export function NewsletterDashboard() {
               <button
                 type="button"
                 onClick={handleGoogleSignOut}
-                disabled={sending}
+                disabled={sending || testing}
                 className="h-11 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-70"
               >
                 Disconnect Google
@@ -325,7 +367,7 @@ export function NewsletterDashboard() {
             <button
               type="button"
               onClick={() => void handleSignIn()}
-              disabled={!clientId || connecting || sending}
+              disabled={!clientId || connecting || sending || testing}
               className="h-11 rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-70"
             >
               {connecting ? "Waiting for Google..." : "Sign in with Google"}
@@ -418,6 +460,18 @@ export function NewsletterDashboard() {
             </p>
           )}
 
+          {spamWarnings.length ? (
+            <ul className="mt-4 space-y-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              {spamWarnings.map((warning) => (
+                <li key={warning.id}>{warning.message}</li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="mt-3 text-xs text-muted">
+            Script tags and external font links are removed before a message is sent. If the template has no unsubscribe
+            line, one is added in the footer.
+          </p>
+
           <label className="mt-5 flex flex-col gap-1.5 text-sm font-medium">
             HTML
             <textarea
@@ -467,13 +521,13 @@ export function NewsletterDashboard() {
         <h2 className="text-sm font-semibold">Recipients</h2>
         <p className="mt-2 text-sm text-muted">
           Attach an .xlsx, .xls, or .csv file. The email column is the header containing “email”, or the first column
-          that contains email addresses. A name column fills {"{{name}}"} and {"{{first_name}}"}. Addresses are
-          validated and duplicates are skipped.
+          that contains email addresses. The name is the whole cell, including spaces and commas, and fills {"{{name}}"}{" "}
+          and {"{{first_name}}"}. Addresses are validated and duplicates are skipped.
         </p>
         <input
           type="file"
           accept=".xlsx,.xls,.csv,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          disabled={parsing || sending}
+          disabled={parsing || sending || testing}
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -500,7 +554,7 @@ export function NewsletterDashboard() {
                 <thead className="sticky top-0 bg-background text-xs uppercase tracking-wide text-muted">
                   <tr>
                     <th className="px-3 py-2 font-medium">Email</th>
-                    <th className="px-3 py-2 font-medium">Name</th>
+                    <th className="px-3 py-2 font-medium">Full name</th>
                     <th className="px-3 py-2 font-medium">Check</th>
                     <th className="px-3 py-2 font-medium">Send</th>
                   </tr>
@@ -548,14 +602,26 @@ export function NewsletterDashboard() {
             </button>
             <button
               type="button"
+              onClick={() => void handleSendTest()}
+              disabled={!canTest}
+              className="h-11 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-70"
+            >
+              {testing ? "Sending test..." : "Send test to me"}
+            </button>
+            <button
+              type="button"
               onClick={() => void handleCopyBcc()}
-              disabled={!validRecipients.length || sending}
+              disabled={!validRecipients.length || sending || testing}
               className="h-11 rounded-lg border border-border px-4 text-sm font-semibold disabled:opacity-70"
             >
               Copy recipients (BCC)
             </button>
           </div>
-          {!session ? <p className="mt-3 text-sm text-muted">Sign in with Google to send.</p> : null}
+          <p className="mt-3 text-sm text-muted">
+            {session
+              ? "Send test to me uses the preview name and sends one message to the connected Gmail address."
+              : "Sign in with Google to send."}
+          </p>
         </div>
       </section>
     </div>

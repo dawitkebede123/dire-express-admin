@@ -1,8 +1,16 @@
 import { isTokenExpired } from "@/lib/newsletter/gmail-error";
 import { personalizeNewsletter } from "@/lib/newsletter/personalize";
 
-export const SEND_INTERVAL_MS = 1500;
+export const SEND_INTERVAL_MIN_MS = 3000;
+export const SEND_INTERVAL_MAX_MS = 5000;
 export const GMAIL_DAILY_LIMIT = 500;
+
+export function nextSendDelay(random: () => number = Math.random) {
+  const span = SEND_INTERVAL_MAX_MS - SEND_INTERVAL_MIN_MS;
+  const base = SEND_INTERVAL_MIN_MS + random() * span;
+  const jitter = (random() - 0.5) * 400;
+  return Math.round(Math.min(SEND_INTERVAL_MAX_MS, Math.max(SEND_INTERVAL_MIN_MS, base + jitter)));
+}
 
 export type SendState = "pending" | "sending" | "sent" | "failed";
 
@@ -51,7 +59,7 @@ export async function runNewsletterCampaign(options: {
   onUpdate: (update: SendUpdate) => void;
   sleep?: (ms: number) => Promise<void>;
 }) {
-  const intervalMs = options.intervalMs ?? SEND_INTERVAL_MS;
+  const intervalMs = options.intervalMs;
   const isCancelled = options.isCancelled ?? (() => false);
   const sleep = options.sleep ?? ((ms: number) => pause(ms, isCancelled));
   let sent = 0;
@@ -144,7 +152,7 @@ export async function runNewsletterCampaign(options: {
         stopped = true;
         break;
       }
-      await sleep(intervalMs);
+      await sleep(intervalMs === undefined ? nextSendDelay() : intervalMs);
       if (isCancelled()) {
         stopped = true;
         break;

@@ -26,7 +26,12 @@ export function isEmailAddress(value: string) {
 function asCell(value: unknown) {
   return String(value ?? "")
     .replace(/\u00a0/g, " ")
+    .replace(/[\r\n]+/g, " ")
     .trim();
+}
+
+export function recipientNameFromCell(value: unknown) {
+  return asCell(value);
 }
 
 function headerLooksLikeEmail(value: string) {
@@ -100,7 +105,7 @@ export function classifyRecipientRows(matrix: unknown[][]): RecipientParseResult
   const recipients: ParsedRecipient[] = [];
   for (const row of data) {
     const rawEmail = (row[emailIndex] ?? "").replace(/^mailto:/i, "").trim();
-    const name = nameIndex === null ? "" : (row[nameIndex] ?? "").trim();
+    const name = nameIndex === null ? "" : recipientNameFromCell(row[nameIndex] ?? "");
     if (!rawEmail && !name) continue;
     if (!rawEmail) {
       recipients.push({ email: "", name, status: "invalid", reason: "Missing email" });

@@ -12,13 +12,8 @@ export function recipientDisplayName(recipient: RecipientIdentity) {
   return local.replace(/[._+-]+/g, " ").replace(/[\r\n]+/g, " ").trim();
 }
 
-export function recipientFirstName(recipient: RecipientIdentity) {
-  const display = recipientDisplayName(recipient);
-  return display.split(/\s+/).find(Boolean) ?? "";
-}
-
-function fill(input: string, name: string, firstName: string) {
-  return input.replaceAll("{{first_name}}", firstName).replaceAll("{{name}}", name);
+function fill(input: string, name: string) {
+  return input.replaceAll("{{first_name}}", name).replaceAll("{{name}}", name);
 }
 
 export function personalizeNewsletter(
@@ -26,9 +21,8 @@ export function personalizeNewsletter(
   recipient: RecipientIdentity,
 ) {
   const name = recipientDisplayName(recipient);
-  const firstName = recipientFirstName(recipient);
   return {
-    subject: fill(input.subject, name, firstName),
-    html: fill(input.html, escapeHtml(name), escapeHtml(firstName)),
+    subject: fill(input.subject, name),
+    html: fill(input.html, escapeHtml(name)),
   };
 }

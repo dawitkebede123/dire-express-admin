@@ -1,4 +1,7 @@
+import { htmlToPlainText, prepareOutgoingHtml } from "@/lib/newsletter/deliverability";
+
 const ENCODED_WORD_BYTES = 45;
+export const SENDER_DISPLAY_NAME = "Dire Express";
 
 function utf8(value: string) {
   return new TextEncoder().encode(value);
@@ -46,29 +49,114 @@ function wrapBase64(value: string) {
   return lines.join("\r\n");
 }
 
+function quotedPrintable(value: string) {
+  const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return normalized.split("\n").map(encodeQuotedPrintableLine).join("\r\n");
+}
+
+function encodeQuotedPrintableLine(line: string) {
+  const bytes = utf8(line);
+  let trailing = bytes.length;
+  while (trailing > 0 && (bytes[trailing - 1] === 32 || bytes[trailing - 1] === 9)) trailing -= 1;
+  let encoded = "";
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    const printable = byte === 9 || (byte >= 32 && byte <= 126 && byte !== 61);
+    if (printable && index < trailing) encoded += String.fromCharCode(byte);
+    else encoded += `=${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  const parts: string[] = [];
+  while (encoded.length > 75) {
+    let take = 75;
+    if (encoded[take - 1] === "=") take -= 1;
+    else if (encoded[take - 2] === "=") take -= 2;
+    parts.push(`${encoded.slice(0, take)}=`);
+    encoded = encoded.slice(take);
+  }
+  parts.push(encoded);
+  return parts.join("\r\n");
+}
+
 export function safeMailbox(value: string | undefined) {
   const email = (value ?? "").trim();
-  if (!email || /[\r\n<>"]/.test(email)) return "";
+  if (!email || /[\r\n<>",;]/.test(email)) return "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "";
   return email;
 }
 
-export function buildRfc2822(input: { to: string; from?: string; subject: string; html: string }) {
-  const to = safeMailbox(input.to);
-  if (!to) throw new Error("Recipient address is not a valid email.");
-  const from = safeMailbox(input.from);
-  const headers = [
-    "MIME-Version: 1.0",
-    `To: ${to}`,
-    from ? `From: ${from}` : "",
-    `Subject: ${encodeSubject(input.subject)}`,
-    "Content-Type: text/html; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-  ].filter(Boolean);
-  const body = wrapBase64(bytesToBase64(utf8(input.html)));
-  return `${headers.join("\r\n")}\r\n\r\n${body}`;
+function formatMailbox(email: string, displayName?: string) {
+  const name = (displayName ?? "").replace(/[\r\n]+/g, " ").trim();
+  if (!name) return email;
+  if (/^[\u0020-\u007e]+$/.test(name) && !/["\\,]/.test(name)) return `${name} <${email}>`;
+  return `${encodeSubject(name)} <${email}>`;
 }
 
-export function buildRawMime(input: { to: string; from?: string; subject: string; html: string }) {
+function rfc5322Date(date: Date) {
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${days[date.getUTCDay()]}, ${pad(date.getUTCDate())} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} +0000`;
+}
+
+function createMessageId(domain: string) {
+  const unique = `${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 12)}`;
+  return `<${unique}@${domain}>`;
+}
+
+export function buildRfc2822(input: {
+  to: string;
+  from?: string;
+  subject: string;
+  html: string;
+  displayName?: string;
+}) {
+  const to = safeMailbox(input.to);
+  if (!to) throw new Error("Send exactly one recipient in To.");
+  const from = safeMailbox(input.from);
+  if (!from) throw new Error("Sign in with Google so the message has a From address.");
+  const domain = from.split("@")[1];
+  if (!domain) throw new Error("The sender address has no domain.");
+  const html = prepareOutgoingHtml(input.html, from);
+  const plain = htmlToPlainText(html);
+  let boundary = `dire_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  if (html.includes(boundary) || plain.includes(boundary)) {
+    boundary = `dire_${crypto.randomUUID().replaceAll("-", "")}`;
+  }
+  const headers = [
+    "MIME-Version: 1.0",
+    `Date: ${rfc5322Date(new Date())}`,
+    `Message-ID: ${createMessageId(domain)}`,
+    `From: ${formatMailbox(from, input.displayName ?? SENDER_DISPLAY_NAME)}`,
+    `Reply-To: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodeSubject(input.subject)}`,
+    `List-Unsubscribe: <mailto:${from}?subject=unsubscribe>`,
+    "List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+  ];
+  const parts = [
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: quoted-printable",
+    "",
+    quotedPrintable(plain),
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    wrapBase64(bytesToBase64(utf8(html))),
+    `--${boundary}--`,
+    "",
+  ];
+  return `${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+}
+
+export function buildRawMime(input: {
+  to: string;
+  from?: string;
+  subject: string;
+  html: string;
+  displayName?: string;
+}) {
   return bytesToBase64Url(utf8(buildRfc2822(input)));
 }
