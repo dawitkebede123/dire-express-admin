@@ -360,8 +360,8 @@ export function NewsletterDashboard() {
       <h1 className="text-2xl font-semibold">Newsletter</h1>
       <p className="mt-1 max-w-3xl text-sm text-muted">
         Edit the Dire Express letter, then send it with Brevo or Gmail from this browser. {"{{name}}"} and{" "}
-        {"{{first_name}}"} both use the full name. The default letter is plain text with a link to direexpress.com.et,
-        which is what tends to land in Gmail Primary.
+        {"{{first_name}}"} both use the full name. The default letter stays short, with one bold button to
+        direexpress.com.et, which is what tends to land in Gmail Primary.
       </p>
 
       <div className="mt-6 flex gap-2">
