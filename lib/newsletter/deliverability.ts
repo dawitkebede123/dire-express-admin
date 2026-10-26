@@ -39,10 +39,21 @@ export function sanitizeNewsletterHtml(html: string) {
     .replace(/@font-face\s*\{[^}]*\}/gi, (block) => (/url\(\s*['"]?https?:/i.test(block) ? "" : block));
 }
 
+function gmailUnsubscribeHtml(sender: string) {
+  const mailbox = sender.trim();
+  const mailto = mailbox ? `mailto:${mailbox}?subject=${encodeURIComponent("unsubscribe")}` : "";
+  if (mailto) {
+    return `<a href="${mailto}" style="color:#666666;text-decoration:underline;">Unsubscribe</a>`;
+  }
+  return "Reply with the subject unsubscribe.";
+}
+
 export function ensureUnsubscribeFooter(html: string, sender: string) {
   const mailbox = sender.trim();
   const mailto = mailbox ? `mailto:${mailbox}?subject=${encodeURIComponent("unsubscribe")}` : "";
-  const next = mailto ? html.replaceAll("{{unsubscribe_url}}", mailto) : html;
+  const link = gmailUnsubscribeHtml(sender);
+  let next = html.replaceAll("{{ unsubscribe }}", link).replaceAll("{{unsubscribe}}", link);
+  next = mailto ? next.replaceAll("{{unsubscribe_url}}", mailto) : next;
   const text = visibleText(next);
   if (/unsubscribe|ምዝገባ/i.test(text)) return next;
   const line = mailto

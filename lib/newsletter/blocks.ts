@@ -9,6 +9,7 @@ export type NewsletterBlock = {
 };
 
 export const NEWSLETTER_BLOCKS: NewsletterBlock[] = [
+  { id: "letter", label: "Letter", lang: "both", mode: "text" },
   { id: "stat_value", label: "Stat number", lang: "both", mode: "text" },
   { id: "am_headline", label: "Headline", lang: "am", mode: "text" },
   { id: "am_headline_accent", label: "Headline accent", lang: "am", mode: "text" },

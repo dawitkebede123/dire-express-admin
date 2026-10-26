@@ -519,6 +519,48 @@
           }
         }
       },
+      "lists": {
+        "$listId": {
+          "name": {
+            ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === now) || newData.val() === data.val())"
+          },
+          "createdBy": {
+            ".validate": "newData.isString() && ((!data.exists() && newData.val() === auth.uid) || (data.exists() && newData.val() === data.val()))"
+          },
+          "brevoListId": {
+            ".validate": "!newData.exists() || (newData.isNumber() && newData.val() > 0 && newData.val() < 100000000000)"
+          },
+          "subscribers": {
+            "$subId": {
+              ".validate": "newData.hasChildren(['email','name','addedAt'])",
+              "email": {
+                ".validate": "newData.isString() && newData.val().length > 3 && newData.val().length <= 200"
+              },
+              "name": {
+                ".validate": "newData.isString() && newData.val().length <= 200"
+              },
+              "addedAt": {
+                ".validate": "newData.isNumber() && ((!data.exists() && newData.val() === now) || newData.val() === data.val())"
+              },
+              "sentAt": {
+                ".validate": "!newData.exists() || (newData.isNumber() && (newData.val() === now || newData.val() === data.val()))"
+              },
+              "brevoCampaignId": {
+                ".validate": "!newData.exists() || (newData.isString() && newData.val().length > 0 && newData.val().length <= 40)"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
       "$other": {
         ".validate": false
       }
