@@ -1,5 +1,10 @@
 import { decodeHtmlText } from "@/lib/newsletter/blocks";
 import { applyNewsletterLinks } from "@/lib/newsletter/links";
+import {
+  dropUnresolvedPlaceholders,
+  resolveNewsletterPlaceholders,
+  stripSquareBracketText,
+} from "@/lib/newsletter/placeholders";
 
 export const GMAIL_CLIP_BYTES = 100 * 1024;
 
@@ -63,8 +68,11 @@ export function ensureUnsubscribeFooter(html: string, sender: string) {
   return `${next}\n${line}`;
 }
 
-export function prepareOutgoingHtml(html: string, sender: string) {
-  return ensureUnsubscribeFooter(sanitizeNewsletterHtml(applyNewsletterLinks(html)), sender);
+export function prepareOutgoingHtml(html: string, sender: string, now: Date = new Date()) {
+  const cleaned = stripSquareBracketText(
+    resolveNewsletterPlaceholders(sanitizeNewsletterHtml(applyNewsletterLinks(html)), now),
+  );
+  return dropUnresolvedPlaceholders(ensureUnsubscribeFooter(cleaned, sender));
 }
 
 export function htmlToPlainText(html: string) {
