@@ -30,6 +30,17 @@ function renameSiteButtonLabel(html: string) {
   return html.replaceAll(OLD_SITE_BUTTON_LABEL, NEW_SITE_BUTTON_LABEL);
 }
 
+const NEW_GROUP_BUTTON_LABEL = "የጎግል ቡድንን ይቀላቀሉ";
+
+// The Google Group control already points at https://groups.google.com/g/dire-express.
+// The saved heading is "የሞካሪዎች ቡድናችንን ይቀላቀሉ"; the button itself is "ጉግል ግሩፑን ይቀላቀሉ".
+function renameGroupButtonLabel(html: string) {
+  return html
+    .replaceAll("የሞካሪዎች ቡድናችንን ይቀላቀሉ", NEW_GROUP_BUTTON_LABEL)
+    .replaceAll("የሞካሪዎች ቡድንን ይቀላቀሉ", NEW_GROUP_BUTTON_LABEL)
+    .replaceAll("ጉግል ግሩፑን ይቀላቀሉ", NEW_GROUP_BUTTON_LABEL);
+}
+
 function replaceBrokerWording(html: string) {
   return html
     .replaceAll("ደላሎችና", "የጭነት አስተላላፊዎችና")
@@ -122,5 +133,7 @@ function insertForwarderNote(html: string) {
 // the tip removal, and the site-button rename do not wait for a click.
 // It is safe to run more than once.
 export function applyForwarderCopy(html: string) {
-  return insertForwarderNote(replaceBrokerWording(stripTipSection(renameSiteButtonLabel(html))));
+  return insertForwarderNote(
+    replaceBrokerWording(stripTipSection(renameGroupButtonLabel(renameSiteButtonLabel(html)))),
+  );
 }
