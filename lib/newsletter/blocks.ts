@@ -23,7 +23,6 @@ export const NEWSLETTER_BLOCKS: NewsletterBlock[] = [
   { id: "am_feature_3_title", label: "Update 3 title", lang: "am", mode: "text" },
   { id: "am_feature_3_body", label: "Update 3 text", lang: "am", mode: "text" },
   { id: "am_stat", label: "Stat label", lang: "am", mode: "text" },
-  { id: "am_tip", label: "Tip", lang: "am", mode: "html" },
   { id: "en_headline", label: "Headline", lang: "en", mode: "text" },
   { id: "en_headline_accent", label: "Headline accent", lang: "en", mode: "text" },
   { id: "en_subheadline", label: "Subheadline", lang: "en", mode: "text" },
@@ -36,7 +35,6 @@ export const NEWSLETTER_BLOCKS: NewsletterBlock[] = [
   { id: "en_feature_3_title", label: "Update 3 title", lang: "en", mode: "text" },
   { id: "en_feature_3_body", label: "Update 3 text", lang: "en", mode: "text" },
   { id: "en_stat", label: "Stat label", lang: "en", mode: "text" },
-  { id: "en_tip", label: "Tip", lang: "en", mode: "html" },
 ];
 
 const BLOCK_ID = /^[a-z0-9_]+$/;
