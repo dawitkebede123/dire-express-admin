@@ -118,7 +118,7 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 | `newsletter/template` | `{ subject, html, updatedAt, updatedBy }`. Admin read and write. `updatedAt` is `ServerValue.TIMESTAMP` and `updatedBy` is `auth.uid`. |
 | `newsletter/campaigns/{id}` | One send run: `{ subject, total, sent, failed, createdAt, createdBy }`. `total` is how many recipients were included. A stopped run can have `sent + failed` less than `total`. A Brevo batch writes the same shape. |
 | `newsletter/lists/{listId}` | Named subscriber list: `name`, `createdAt`, `createdBy`, optional `brevoListId`. |
-| `newsletter/lists/{listId}/subscribers/{id}` | `email`, `name`, `addedAt`, and after a Brevo batch `sentAt` plus `brevoCampaignId`. The Brevo API key is not stored here. |
+| `newsletter/lists/{listId}/subscribers/{id}` | `email`, `name`, `addedAt`, and after a Brevo batch `sentAt` plus `brevoCampaignId`. A spreadsheet import reads every sheet and writes each new subscriber with its own `set()` (20 at a time) because `addedAt` must be the server timestamp. The Brevo API key is not stored here. |
 
 `users.role` of `ADMIN` is the mobile user role. `adminUsers.role` is only `superadmin` or `admin`.
 

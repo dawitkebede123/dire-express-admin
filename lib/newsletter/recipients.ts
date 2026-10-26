@@ -134,19 +134,96 @@ export function classifyRecipientRows(matrix: unknown[][]): RecipientParseResult
   };
 }
 
+const EMPTY_PARSE: RecipientParseResult = {
+  recipients: [],
+  validCount: 0,
+  invalidCount: 0,
+  emailHeader: "Email",
+  nameHeader: null,
+};
+
+// A workbook often keeps a short first sheet and the full list on the next one.
+// Merge every sheet. The first valid copy of an email wins.
+export function combineRecipientParses(parts: RecipientParseResult[]) {
+  const present = parts.filter((part) => part.recipients.length > 0);
+  if (present.length === 0) return EMPTY_PARSE;
+  if (present.length === 1) return present[0];
+  const seen = new Set<string>();
+  const recipients: ParsedRecipient[] = [];
+  let emailHeader = "Email";
+  let nameHeader: string | null = null;
+  for (const part of present) {
+    if (part.emailHeader && part.emailHeader !== "Email") emailHeader = part.emailHeader;
+    if (part.nameHeader) nameHeader = part.nameHeader;
+    for (const row of part.recipients) {
+      const key = row.email.trim().toLowerCase();
+      if (row.status === "valid" && key) {
+        if (seen.has(key)) {
+          recipients.push({ ...row, status: "invalid", reason: "Duplicate" });
+          continue;
+        }
+        seen.add(key);
+      }
+      recipients.push(row);
+    }
+  }
+  const validCount = recipients.filter((row) => row.status === "valid").length;
+  return {
+    recipients,
+    validCount,
+    invalidCount: recipients.length - validCount,
+    emailHeader,
+    nameHeader,
+  };
+}
+
+type WorkbookSheet = {
+  ["!ref"]?: string;
+  [cell: string]: unknown;
+};
+
+// sheet_to_json stops at !ref. Some files set that range to a short preview
+// while the rest of the cells are still in the sheet.
+export function expandSheetRef(sheet: WorkbookSheet, decode: (address: string) => { r: number; c: number }, encode: (range: { s: { r: number; c: number }; e: { r: number; c: number } }) => string) {
+  let minRow = Number.POSITIVE_INFINITY;
+  let minCol = Number.POSITIVE_INFINITY;
+  let maxRow = -1;
+  let maxCol = -1;
+  for (const key of Object.keys(sheet)) {
+    if (key.startsWith("!")) continue;
+    let cell: { r: number; c: number };
+    try {
+      cell = decode(key);
+    } catch {
+      continue;
+    }
+    minRow = Math.min(minRow, cell.r);
+    minCol = Math.min(minCol, cell.c);
+    maxRow = Math.max(maxRow, cell.r);
+    maxCol = Math.max(maxCol, cell.c);
+  }
+  if (maxRow < 0) return;
+  sheet["!ref"] = encode({ s: { r: minRow, c: minCol }, e: { r: maxRow, c: maxCol } });
+}
+
 export async function parseRecipientFile(file: File) {
   if (!/\.(xlsx|xls|csv)$/i.test(file.name)) {
     throw new Error("Attach an .xlsx, .xls, or .csv file.");
   }
   const XLSX = await import("xlsx");
   const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error("That file has no sheets.");
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
-    header: 1,
-    raw: false,
-    defval: "",
-    blankrows: false,
+  if (!workbook.SheetNames.length) throw new Error("That file has no sheets.");
+  const parts = workbook.SheetNames.map((sheetName) => {
+    const sheet = workbook.Sheets[sheetName] as WorkbookSheet | undefined;
+    if (!sheet) return EMPTY_PARSE;
+    expandSheetRef(sheet, XLSX.utils.decode_cell, XLSX.utils.encode_range);
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      raw: false,
+      defval: "",
+      blankrows: false,
+    });
+    return classifyRecipientRows(matrix);
   });
-  return classifyRecipientRows(matrix);
+  return combineRecipientParses(parts);
 }

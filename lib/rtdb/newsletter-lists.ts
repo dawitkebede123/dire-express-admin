@@ -6,6 +6,9 @@ import { NOT_AN_ADMIN, readDashboardAdmin } from "@/lib/rtdb/admin-access";
 
 const LIST_NAME_LIMIT = 120;
 const WRITE_CHUNK = 100;
+// Each new subscriber is its own set() with one serverTimestamp. addedAt must
+// equal the rules' `now`, and one update() of many timestamps is all-or-nothing.
+const NEW_SUBSCRIBER_PARALLEL = 20;
 
 async function requireAdminUser() {
   const user = await waitForUser();
@@ -121,7 +124,11 @@ export async function rememberBrevoListId(listId: string, brevoListId: number) {
   await update(ref(getClientDb(), `newsletter/lists/${listId}`), { brevoListId });
 }
 
-export async function addSubscribers(listId: string, drafts: SubscriberDraft[]) {
+export async function addSubscribers(
+  listId: string,
+  drafts: SubscriberDraft[],
+  onProgress?: (saved: number, total: number) => void,
+) {
   await requireAdminUser();
   if (!listId || /[.#$[\]/]/.test(listId)) throw new Error("Invalid list id.");
   const snap = await get(ref(getClientDb(), `newsletter/lists/${listId}/subscribers`));
@@ -134,7 +141,7 @@ export async function addSubscribers(listId: string, drafts: SubscriberDraft[]) 
   }
 
   const updates: Record<string, unknown> = {};
-  let added = 0;
+  const fresh: { id: string; email: string; name: string }[] = [];
   let renamed = 0;
   const base = `newsletter/lists/${listId}/subscribers`;
   const seen = new Set<string>();
@@ -153,14 +160,34 @@ export async function addSubscribers(listId: string, drafts: SubscriberDraft[]) 
     }
     const id = push(ref(getClientDb(), base)).key;
     if (!id) throw new Error("Could not allocate a subscriber id.");
-    updates[`${base}/${id}`] = {
-      email,
-      name,
-      addedAt: serverTimestamp(),
-    };
-    added += 1;
+    fresh.push({ id, email, name });
   }
   if (Object.keys(updates).length) await writeChunks(updates);
+
+  const db = getClientDb();
+  let added = 0;
+  onProgress?.(0, fresh.length);
+  for (let index = 0; index < fresh.length; index += NEW_SUBSCRIBER_PARALLEL) {
+    const slice = fresh.slice(index, index + NEW_SUBSCRIBER_PARALLEL);
+    const results = await Promise.all(
+      slice.map(async (row) => {
+        try {
+          await set(ref(db, `${base}/${row.id}`), {
+            email: row.email,
+            name: row.name,
+            addedAt: serverTimestamp(),
+          });
+          return null;
+        } catch (error) {
+          return error;
+        }
+      }),
+    );
+    added += results.filter((error) => error == null).length;
+    onProgress?.(added, fresh.length);
+    const failure = results.find((error) => error != null);
+    if (failure) throw failure;
+  }
   return { added, renamed };
 }
 
