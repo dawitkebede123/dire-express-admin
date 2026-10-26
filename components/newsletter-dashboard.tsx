@@ -444,7 +444,7 @@ export function NewsletterDashboard() {
                 Saved at newsletter/template. The text fields edit the tagged sections. The code box is the HTML that
                 gets saved and sent. Opening this page rewrites ደላሎች to የጭነት አስተላላፊዎች, adds the freight-forwarder
                 note when it is missing, removes the Pro tip section, and renames የድር መተግበሪያውን ይክፈቱ to ድህረ ገፃችንን
-                ይጂብኙ. That button still opens https://direexpress.com.et/. Preview and send already use that version.
+                ይጎብኙ. That button still opens https://direexpress.com.et/. Preview and send already use that version.
                 Save template stores it.
               </p>
               {updatedAt ? (

@@ -23,7 +23,7 @@ export function forwarderNoteHtml() {
 }
 
 const OLD_SITE_BUTTON_LABEL = "የድር መተግበሪያውን ይክፈቱ";
-const NEW_SITE_BUTTON_LABEL = "ድህረ ገፃችንን ይጂብኙ";
+const NEW_SITE_BUTTON_LABEL = "ድህረ ገፃችንን ይጎብኙ";
 
 // The saved hero button already points at https://direexpress.com.et/. Only the label changes.
 function renameSiteButtonLabel(html: string) {
