@@ -15,6 +15,7 @@ import { GMAIL_DAILY_LIMIT, runNewsletterCampaign, type SendState } from "@/lib/
 import { DEFAULT_NEWSLETTER_HTML, DEFAULT_NEWSLETTER_SUBJECT } from "@/lib/newsletter/default-template";
 import { newsletterSpamWarnings } from "@/lib/newsletter/deliverability";
 import { connectGmail, googleOAuthClientId, revokeGmailToken, sendGmailHtml, type GmailSession } from "@/lib/newsletter/gmail";
+import { applyForwarderCopy } from "@/lib/newsletter/forwarder-copy";
 import { applyNewsletterLinks } from "@/lib/newsletter/links";
 import { isTokenExpired } from "@/lib/newsletter/gmail-error";
 import { previewNewsletterHtml } from "@/lib/newsletter/brevo-html";
@@ -131,7 +132,7 @@ export function NewsletterDashboard() {
         if (cancelled) return;
         if (saved) {
           setSubject(saved.subject);
-          setHtml(applyNewsletterLinks(saved.html));
+          setHtml(applyForwarderCopy(applyNewsletterLinks(saved.html)));
           setUpdatedAt(saved.updatedAt);
         }
         setReady(true);
@@ -360,8 +361,8 @@ export function NewsletterDashboard() {
       <h1 className="text-2xl font-semibold">Newsletter</h1>
       <p className="mt-1 max-w-3xl text-sm text-muted">
         Edit the Dire Express letter, then send it with Brevo or Gmail from this browser. {"{{name}}"} and{" "}
-        {"{{first_name}}"} both use the full name. The default letter stays short, with one bold button to
-        direexpress.com.et, which is what tends to land in Gmail Primary.
+        {"{{first_name}}"} both use the full name. The default letter stays short: a highlighted note for
+        freight forwarders, then one bold button to direexpress.com.et.
       </p>
 
       <div className="mt-6 flex gap-2">
@@ -441,7 +442,10 @@ export function NewsletterDashboard() {
               <h2 className="text-sm font-semibold">Template</h2>
               <p className="mt-2 text-sm text-muted">
                 Saved at newsletter/template. The text fields edit the tagged sections. The code box is the HTML that
-                gets saved and sent.
+                gets saved and sent. Opening this page rewrites ደላሎች to የጭነት አስተላላፊዎች, adds the freight-forwarder
+                note when it is missing, removes the Pro tip section, and renames የድር መተግበሪያውን ይክፈቱ to ድህረ ገፃችንን
+                ይጎብኙ. That button still opens https://direexpress.com.et/. Preview and send already use that version.
+                Save template stores it.
               </p>
               {updatedAt ? (
                 <p className="mt-2 text-xs text-muted">Last saved {new Date(updatedAt).toLocaleString()}.</p>

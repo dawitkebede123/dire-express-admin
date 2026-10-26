@@ -1,4 +1,5 @@
 import { BRAND_ORANGE, emphasizeNewsletterLinks } from "@/lib/newsletter/brand";
+import { applyForwarderCopy } from "@/lib/newsletter/forwarder-copy";
 import { decodeHtmlText } from "@/lib/newsletter/blocks";
 import { applyNewsletterLinks } from "@/lib/newsletter/links";
 import {
@@ -72,7 +73,7 @@ export function ensureUnsubscribeFooter(html: string, sender: string) {
 export function prepareOutgoingHtml(html: string, sender: string, now: Date = new Date()) {
   const cleaned = stripSquareBracketText(
     resolveNewsletterPlaceholders(
-      emphasizeNewsletterLinks(sanitizeNewsletterHtml(applyNewsletterLinks(html))),
+      emphasizeNewsletterLinks(sanitizeNewsletterHtml(applyNewsletterLinks(applyForwarderCopy(html)))),
       now,
     ),
   );

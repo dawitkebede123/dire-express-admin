@@ -1,4 +1,5 @@
 import { BRAND_ORANGE, emphasizeNewsletterLinks } from "@/lib/newsletter/brand";
+import { applyForwarderCopy } from "@/lib/newsletter/forwarder-copy";
 import { escapeHtml } from "@/lib/newsletter/blocks";
 import { applyNewsletterLinks } from "@/lib/newsletter/links";
 import {
@@ -17,7 +18,7 @@ export const BREVO_FIRST_NAME = "{{ contact.FIRSTNAME }}";
 export const BREVO_UNSUBSCRIBE = "{{ unsubscribe }}";
 
 export function toBrevoCampaignHtml(html: string, previewText: string, now: Date = new Date()) {
-  let body = emphasizeNewsletterLinks(sanitizeNewsletterHtml(applyNewsletterLinks(html)));
+  let body = emphasizeNewsletterLinks(sanitizeNewsletterHtml(applyNewsletterLinks(applyForwarderCopy(html))));
   body = stripSquareBracketText(resolveNewsletterPlaceholders(body, now));
   body = body.replace(NAME_TAG, BREVO_FIRST_NAME);
   body = body.replace(/\{\{\s*unsubscribe_url\s*\}\}/gi, BREVO_UNSUBSCRIBE);
@@ -36,7 +37,7 @@ export function toBrevoCampaignHtml(html: string, previewText: string, now: Date
 export function previewNewsletterHtml(html: string, recipient: RecipientIdentity, now: Date = new Date()) {
   const name = escapeHtml(recipientDisplayName(recipient));
   const prepared = dropUnresolvedPlaceholders(
-    stripSquareBracketText(resolveNewsletterPlaceholders(emphasizeNewsletterLinks(html), now))
+    stripSquareBracketText(resolveNewsletterPlaceholders(emphasizeNewsletterLinks(applyForwarderCopy(html)), now))
       .replace(NAME_TAG, name)
       .replace(/\{\{\s*unsubscribe_url\s*\}\}/gi, "Unsubscribe")
       .replace(/\{\{\s*unsubscribe\s*\}\}/gi, "Unsubscribe"),
