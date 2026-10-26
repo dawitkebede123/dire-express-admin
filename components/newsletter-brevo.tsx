@@ -39,7 +39,7 @@ import {
   type NewsletterSubscriberList,
 } from "@/lib/rtdb/newsletter-lists";
 
-const TABLE_LIMIT = 400;
+const PAGE_SIZE = 50;
 const fieldClass =
   "w-full rounded-lg border border-border bg-background px-3 py-2 font-normal outline-none focus:border-primary";
 
@@ -250,15 +250,20 @@ export function useBrevoNewsletter(options: {
       }
       const parsed = await parseRecipientFile(file);
       const valid = parsed.recipients.filter((row) => row.status === "valid");
+      setStatus(`Saving ${valid.length} contacts from ${file.name}…`);
       const result = await addSubscribers(
         listId,
         valid.map((row) => ({ email: row.email, name: row.name })),
+        (saved, total) => {
+          setStatus(`Saving ${saved} of ${total} contacts…`);
+        },
       );
       await refreshLists();
       setStatus(
         `“${listName || "List"}”: added ${result.added}, updated ${result.renamed} names, skipped ${parsed.invalidCount} rows.`,
       );
     } catch (importError) {
+      await refreshLists().catch(() => undefined);
       fail(importError, "Could not import that file.");
     } finally {
       setBusy(false);
@@ -685,22 +690,33 @@ export function BrevoSettings({ controller }: { controller: BrevoNewsletterContr
 
 export function BrevoAudience({ controller }: { controller: BrevoNewsletterController }) {
   const list = controller.list;
+  const listId = list?.id ?? "";
+  const [page, setPage] = useState(0);
+  const [pagedListId, setPagedListId] = useState(listId);
+  if (listId !== pagedListId) {
+    setPagedListId(listId);
+    setPage(0);
+  }
   const visible = list ? list.subscribers.slice() : [];
   visible.sort((a, b) => {
     const aWaiting = a.sentAt == null ? 0 : 1;
     const bWaiting = b.sentAt == null ? 0 : 1;
     return aWaiting - bWaiting || a.email.localeCompare(b.email);
   });
-  const rows = visible.slice(0, TABLE_LIMIT);
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = currentPage * PAGE_SIZE;
+  const rows = visible.slice(pageStart, pageStart + PAGE_SIZE);
   const pending = controller.pendingSend;
 
   return (
     <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-sm font-semibold">Brevo subscribers</h2>
       <p className="mt-2 text-sm text-muted">
-        Lists live in Realtime Database at newsletter/lists. Sync copies the chosen list into a Brevo contact list in
-        batches of 100 and does not send. Send now syncs that list, then creates a campaign for the next unsent batch
-        only, so people already mailed are not included again today.
+        Lists live in Realtime Database at newsletter/lists. A spreadsheet import reads every sheet and saves every
+        valid row, 20 contacts at a time. Sync copies the chosen list into a Brevo contact list in batches of 100 and
+        does not send. Send now syncs that list, then creates a campaign for the next unsent batch only, so people
+        already mailed are not included again today. The table shows 50 rows at a time.
       </p>
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="flex min-w-[16rem] flex-1 flex-col gap-1.5 text-sm font-medium">
@@ -790,10 +806,31 @@ export function BrevoAudience({ controller }: { controller: BrevoNewsletterContr
               </tbody>
             </table>
           </div>
-          {list.subscribers.length > rows.length ? (
-            <p className="mt-2 text-xs text-muted">
-              Showing the first {rows.length} of {list.subscribers.length}. Sending uses the whole list.
-            </p>
+          {list.subscribers.length > PAGE_SIZE ? (
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted">
+              <span>
+                {pageStart + 1}–{pageStart + rows.length} of {list.subscribers.length}. Sending uses the whole list.
+              </span>
+              <button
+                type="button"
+                disabled={currentPage === 0}
+                onClick={() => setPage(currentPage - 1)}
+                className="h-8 rounded-lg border border-border px-3 font-semibold disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span>
+                Page {currentPage + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= pageCount - 1}
+                onClick={() => setPage(currentPage + 1)}
+                className="h-8 rounded-lg border border-border px-3 font-semibold disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
           ) : null}
         </>
       ) : (
