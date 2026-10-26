@@ -76,6 +76,23 @@ export function explainBrevoFailure(input: { status: number; code: string; messa
     };
   }
 
+  const planOption = /not allowed to avail\s+(.+?)\s+option/i.exec(message)?.[1]?.trim() ?? "";
+  if (planOption || /not allowed to avail/i.test(haystack)) {
+    const which = planOption ? ` The blocked option is "${planOption}".` : "";
+    return {
+      kind: "other" as const,
+      message: `Brevo refused because this account's plan does not include that campaign option.${which} On the free plan that usually means a campaign tag, an A/B test, or send-time optimization. The campaign was not created, and nobody was marked as sent. Brevo said: ${message || code || "method not allowed"}.`,
+    };
+  }
+
+  if (input.status === 405 || code === "method_not_allowed") {
+    const detail = [input.status ? `HTTP ${input.status}` : "", code, message].filter(Boolean).join(" — ");
+    return {
+      kind: "other" as const,
+      message: `Brevo refused the request (${detail || "method not allowed"}). Nothing was marked as sent.`,
+    };
+  }
+
   if (input.status === 429) {
     return {
       kind: "other" as const,

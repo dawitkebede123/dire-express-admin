@@ -316,6 +316,14 @@ export type BrevoCampaignDraft = {
 };
 
 export async function createBrevoCampaign(apiKey: string, draft: BrevoCampaignDraft) {
+  // Free-plan body. Brevo answers HTTP 405 method_not_allowed
+  // ("You are not allowed to avail tag option for your campaign") when `tag` is sent
+  // on a plan below Professional. Also omitted, because they are paid or add-on only:
+  // abTesting and its subject/split/winner fields, sendAtBestTime, ipWarmupEnable
+  // (plus increaseRate and initialQuota), custom utm* overrides, emailExpirationDate,
+  // attachmentUrl, segment ids, and custom unsubscribe/profile form ids.
+  // inlineImageActivation false is the API default (do not embed images).
+  // mirrorActive false keeps Brevo from adding a view-in-browser link; that flag is not plan-gated.
   const body: Record<string, unknown> = {
     name: draft.name.slice(0, 150),
     subject: draft.subject,
@@ -325,7 +333,6 @@ export async function createBrevoCampaign(apiKey: string, draft: BrevoCampaignDr
     recipients: { listIds: [draft.listId] },
     inlineImageActivation: false,
     mirrorActive: false,
-    tag: "dire-express",
   };
   const preview = draft.previewText.trim();
   if (preview) body.previewText = preview.slice(0, 300);
