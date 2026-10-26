@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { BrevoAudience, BrevoSettings, useBrevoNewsletter } from "@/components/newsletter-brevo";
+import { useAdminAuth } from "@/components/auth-provider";
 import {
   NEWSLETTER_BLOCKS,
   blockFieldValue,
@@ -15,7 +17,9 @@ import { newsletterSpamWarnings } from "@/lib/newsletter/deliverability";
 import { connectGmail, googleOAuthClientId, revokeGmailToken, sendGmailHtml, type GmailSession } from "@/lib/newsletter/gmail";
 import { applyNewsletterLinks } from "@/lib/newsletter/links";
 import { isTokenExpired } from "@/lib/newsletter/gmail-error";
+import { previewNewsletterHtml } from "@/lib/newsletter/brevo-html";
 import { personalizeNewsletter } from "@/lib/newsletter/personalize";
+import { patchBrevoSettings, useBrevoApiKey, useBrevoSettings } from "@/lib/newsletter/brevo-storage";
 import { parseRecipientFile, type ParsedRecipient, type RecipientParseResult } from "@/lib/newsletter/recipients";
 import { permissionMessage } from "@/lib/rtdb/client-writes";
 import { loadNewsletterTemplate, logNewsletterCampaign, saveNewsletterTemplate } from "@/lib/rtdb/newsletter";
@@ -64,7 +68,7 @@ function BlockField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const long = block.mode === "html" || value.length > 80 || /intro|body|subheadline|tip/.test(block.id);
+  const long = block.mode === "html" || value.length > 80 || /intro|body|subheadline|tip|letter/.test(block.id);
   const className =
     "w-full rounded-lg border border-border bg-background px-3 py-2 font-normal outline-none focus:border-primary";
   return (
@@ -82,6 +86,11 @@ function BlockField({
 
 export function NewsletterDashboard() {
   const clientId = googleOAuthClientId();
+  const { admin } = useAdminAuth();
+  const brevoSettings = useBrevoSettings();
+  const brevoKey = useBrevoApiKey();
+  const provider: "brevo" | "gmail" =
+    brevoSettings.provider === "gmail" ? "gmail" : brevoSettings.provider === "brevo" || brevoKey ? "brevo" : "gmail";
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [subject, setSubject] = useState(DEFAULT_NEWSLETTER_SUBJECT);
@@ -100,6 +109,20 @@ export function NewsletterDashboard() {
   const [testing, setTesting] = useState(false);
   const sessionRef = useRef<GmailSession | null>(null);
   const cancelRef = useRef(false);
+
+  const brevo = useBrevoNewsletter({
+    active: provider === "brevo",
+    subject,
+    html,
+    previewName,
+    adminEmail: admin?.email ?? "",
+    onConfigured: () => {
+      patchBrevoSettings({ provider: "brevo" });
+    },
+    onForgot: () => {
+      patchBrevoSettings({ provider: "gmail" });
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +153,10 @@ export function NewsletterDashboard() {
     { subject, html },
     { email: "preview@direexpress.app", name: previewName.trim() || "Abebe Bekele" },
   );
+  const previewHtml = previewNewsletterHtml(html, {
+    email: "preview@direexpress.app",
+    name: previewName.trim() || "Abebe Bekele",
+  });
   const recipients = parsed?.recipients ?? [];
   const validRecipients = recipients.filter((row) => row.status === "valid");
   const sentCount = validRecipients.filter((row) => delivery[deliveryKey(row.email)]?.state === "sent").length;
@@ -332,11 +359,37 @@ export function NewsletterDashboard() {
     <div className="mx-auto max-w-6xl">
       <h1 className="text-2xl font-semibold">Newsletter</h1>
       <p className="mt-1 max-w-3xl text-sm text-muted">
-        Edit the Dire Express newsletter, attach a recipient spreadsheet, and send it from Gmail in this browser.
-        Each message goes to one address in To. {"{{name}}"} and {"{{first_name}}"} both use the full trimmed name
-        cell. {"{{first_name}}"} is a compatibility alias for that same full name.
+        Edit the Dire Express letter, then send it with Brevo or Gmail from this browser. {"{{name}}"} and{" "}
+        {"{{first_name}}"} both use the full name. The default letter is plain text with a link to direexpress.com.et,
+        which is what tends to land in Gmail Primary.
       </p>
 
+      <div className="mt-6 flex gap-2">
+        {(["brevo", "gmail"] as const).map((choice) => (
+          <button
+            key={choice}
+            type="button"
+            onClick={() => {
+              patchBrevoSettings({ provider: choice });
+            }}
+            className={`h-10 rounded-lg px-4 text-sm font-semibold ${
+              provider === choice ? "bg-primary text-primary-foreground" : "border border-border"
+            }`}
+          >
+            {choice === "brevo" ? "Brevo" : "Gmail"}
+            {choice === "brevo" && brevo.apiKeySaved ? " · key saved" : ""}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-sm text-muted">
+        {provider === "brevo"
+          ? "Brevo is selected. Once a key is saved in this browser it is the default sender. Gmail is still on the other tab."
+          : "Gmail is selected. Each message is one To address from the connected Google account."}
+      </p>
+
+      {provider === "brevo" ? <BrevoSettings controller={brevo} /> : null}
+
+      {provider === "gmail" ? (
       <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="text-sm font-semibold">Gmail sender</h2>
         <p className="mt-2 text-sm text-muted">
@@ -376,6 +429,7 @@ export function NewsletterDashboard() {
           )}
         </div>
       </section>
+      ) : null}
 
       {!ready ? <p className="mt-6 text-sm text-muted">Loading template…</p> : null}
       {loadError ? <p className="mt-4 text-sm text-danger">{loadError}</p> : null}
@@ -392,7 +446,7 @@ export function NewsletterDashboard() {
               {updatedAt ? (
                 <p className="mt-2 text-xs text-muted">Last saved {new Date(updatedAt).toLocaleString()}.</p>
               ) : (
-                <p className="mt-2 text-xs text-muted">Showing the built-in Dire Express template.</p>
+                <p className="mt-2 text-xs text-muted">Showing the built-in personal letter. Save it to keep your edits.</p>
               )}
             </div>
             <button
@@ -430,36 +484,34 @@ export function NewsletterDashboard() {
             </div>
           ) : null}
 
-          <div className="mt-5 flex gap-2">
-            {(["am", "en"] as const).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                onClick={() => setBlockLang(lang)}
-                className={`h-10 rounded-lg px-4 text-sm font-semibold ${
-                  blockLang === lang ? "bg-primary text-primary-foreground" : "border border-border"
-                }`}
-              >
-                {lang === "am" ? "አማርኛ" : "English"}
-              </button>
-            ))}
-          </div>
           {langBlocks.length ? (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {langBlocks.map((block) => (
-                <BlockField
-                  key={block.id}
-                  block={block}
-                  value={blockFieldValue(rawBlocks[block.id] ?? "", block.mode)}
-                  onChange={(value) => updateBlock(block, value)}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="mt-4 text-sm text-muted">
-              This HTML has no tagged text blocks for this language. Edit the code below.
-            </p>
-          )}
+            <>
+              <div className="mt-5 flex gap-2">
+                {(["am", "en"] as const).map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    onClick={() => setBlockLang(lang)}
+                    className={`h-10 rounded-lg px-4 text-sm font-semibold ${
+                      blockLang === lang ? "bg-primary text-primary-foreground" : "border border-border"
+                    }`}
+                  >
+                    {lang === "am" ? "አማርኛ" : "English"}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                {langBlocks.map((block) => (
+                  <BlockField
+                    key={block.id}
+                    block={block}
+                    value={blockFieldValue(rawBlocks[block.id] ?? "", block.mode)}
+                    onChange={(value) => updateBlock(block, value)}
+                  />
+                ))}
+              </div>
+            </>
+          ) : null}
 
           {spamWarnings.length ? (
             <ul className="mt-4 space-y-1 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -495,7 +547,7 @@ export function NewsletterDashboard() {
               </label>
               <p className="min-w-0 flex-1 truncate text-sm text-muted">Subject: {preview.subject}</p>
             </div>
-            <iframe title="Newsletter preview" sandbox="" srcDoc={preview.html} className="h-[720px] w-full bg-white" />
+            <iframe title="Newsletter preview" sandbox="" srcDoc={previewHtml} className="h-[720px] w-full bg-white" />
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -518,6 +570,7 @@ export function NewsletterDashboard() {
         </section>
       ) : null}
 
+      {provider === "gmail" ? (
       <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="text-sm font-semibold">Recipients</h2>
         <p className="mt-2 text-sm text-muted">
@@ -625,6 +678,9 @@ export function NewsletterDashboard() {
           </p>
         </div>
       </section>
+      ) : (
+        <BrevoAudience controller={brevo} />
+      )}
     </div>
   );
 }

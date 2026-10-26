@@ -116,7 +116,9 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 | `admins/{uid}` | `true`. The mobile rules' admin check. |
 | `demoRequests/{id}` | Landing-page leads (`email`, `source`, `createdAt`, `readAt`) |
 | `newsletter/template` | `{ subject, html, updatedAt, updatedBy }`. Admin read and write. `updatedAt` is `ServerValue.TIMESTAMP` and `updatedBy` is `auth.uid`. |
-| `newsletter/campaigns/{id}` | One send run: `{ subject, total, sent, failed, createdAt, createdBy }`. `total` is how many recipients were included. A stopped run can have `sent + failed` less than `total`. |
+| `newsletter/campaigns/{id}` | One send run: `{ subject, total, sent, failed, createdAt, createdBy }`. `total` is how many recipients were included. A stopped run can have `sent + failed` less than `total`. A Brevo batch writes the same shape. |
+| `newsletter/lists/{listId}` | Named subscriber list: `name`, `createdAt`, `createdBy`, optional `brevoListId`. |
+| `newsletter/lists/{listId}/subscribers/{id}` | `email`, `name`, `addedAt`, and after a Brevo batch `sentAt` plus `brevoCampaignId`. The Brevo API key is not stored here. |
 
 `users.role` of `ADMIN` is the mobile user role. `adminUsers.role` is only `superadmin` or `admin`.
 
@@ -124,9 +126,29 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 
 ## Newsletter
 
-The Newsletter page (`/newsletter`) edits `newsletter/template` and sends the HTML from the signed-in admin's browser. There is no server, no Cloud Function, and no EmailJS. SheetJS (`xlsx`) reads `.xlsx`, `.xls`, and `.csv` files in the browser. The email column is a header containing "email", otherwise the first column that contains email addresses. A name column, when present, is the whole trimmed cell, including spaces and commas. `{{name}}` and `{{first_name}}` both use that full name. `{{first_name}}` is only a compatibility alias. When the sheet has no name, both placeholders use the mailbox name (the part before `@`, with `.`, `_`, `+`, and `-` turned into spaces). The recipients table shows that full name.
+The Newsletter page (`/newsletter`) edits `newsletter/template` and sends from the signed-in admin's browser. There is no server, no Cloud Function, and no EmailJS. Choose **Brevo** or **Gmail**. After a Brevo API key is saved in this browser, Brevo is the default. Gmail stays available on the other tab.
 
-Download HTML saves the current template. Copy recipients (BCC) copies the valid addresses, separated by commas, so they can be pasted into a mail client.
+The built-in template, used when `newsletter/template` is empty and by **Restore default template**, is a short personal letter: a greeting with `{{name}}`, one paragraph, a plain link to `https://direexpress.com.et/`, a sign-off, and a small `{{ unsubscribe }}` line. No images and no buttons. A template already saved in Realtime Database is left as it is until someone restores the default.
+
+SheetJS (`xlsx`) reads `.xlsx`, `.xls`, and `.csv` files in the browser. The email column is a header containing "email", otherwise the first column that contains email addresses. A name column, when present, is the whole trimmed cell, including spaces and commas. `{{name}}` and `{{first_name}}` both use that full name. `{{first_name}}` is only a compatibility alias. When the sheet has no name, both placeholders use the mailbox name (the part before `@`, with `.`, `_`, `+`, and `-` turned into spaces).
+
+Download HTML saves the current template. On the Gmail tab, Copy recipients (BCC) copies the valid addresses, separated by commas.
+
+### Brevo
+
+Direct browser calls to `https://api.brevo.com/v3` work. On 2026-10-26, preflight `OPTIONS` from `https://dire-express-admin.web.app` and from `http://localhost:3001` returned `access-control-allow-origin` set to that origin, and allowed `GET, PUT, DELETE, POST, PATCH, OPTIONS` with headers `api-key`, `content-type`, and `accept`. A real `GET /v3/account` with a bad key returned JSON `{"message":"Key not found","code":"unauthorized"}` plus `access-control-allow-origin: *`. The page calls Brevo with `credentials: "omit"` so that wildcard stays readable. There is no proxy.
+
+The API key is typed into the Newsletter page and stored only at `localStorage["dire-express-admin.brevoApiKey"]`. Sender name, sender email, preview text, batch size, test address, and the Brevo/Gmail choice live in a separate localStorage entry and are not secrets. **Forget key** removes the key. It is not written to Realtime Database, source, or `.env`.
+
+What the admin does in Brevo before the first send:
+
+1. Create a v3 API key: Brevo → SMTP & API → [API keys](https://app.brevo.com/settings/keys/api). Paste the whole key into the Newsletter page on the machine that will send. Each browser keeps its own copy.
+2. If the key is limited to authorized IPs, open [Authorized IPs](https://app.brevo.com/security/authorised_ips) and add this browser's public IP, or turn the restriction off. A home or mobile connection changes address. The page shows Brevo's message, including the IP it reported, when the block is an unknown IP.
+3. Verify the sender. The defaults are the name **Dawit from Dire Express** and **contact@direexpress.com.et**, both editable. Add that address under Senders, domains & IPs and finish SPF and DKIM for `direexpress.com.et`.
+4. The campaign API has no field to disable open or click tracking. Turn those off in Brevo's tracking settings before sending if you do not want them. This page sets `mirrorActive` to false so Brevo does not add a mirror link. `{{ unsubscribe }}` is left in the HTML for Brevo to replace. `{{name}}` is sent as the contact attribute `FIRSTNAME` (the full name). The page creates that attribute when it is missing.
+5. The free plan is about **300 emails a day**. Pick a batch size (1–300). **Send now** asks for confirmation and shows the recipient count, how many were already sent, and how many remain. It syncs the chosen Realtime Database list into a Brevo list (contacts imported 100 at a time, list created if needed), then creates a separate batch list with only the next unsent subscribers and sends that campaign. `sentAt` and `brevoCampaignId` are written on those subscribers. Come back the next day for the next batch. **Clear send history** marks them unsent so a later letter can include them again. **Send test to me** sends one test and does not mark the list.
+
+`npm run deploy` publishes `database.rules.json`. The new `newsletter/lists` node is admin-only, same gate as the rest of `newsletter`. No other rule changed. Deploy the rules before saving a list, or Realtime Database rejects the write.
 
 ### Google Cloud setup (project dire-express)
 
@@ -152,7 +174,7 @@ The page loads `https://accounts.google.com/gsi/client` and requests an access t
 
 Mail from a consumer Gmail account is easy for filters to treat as bulk mail, and that account has a low daily limit. The durable fix is a custom domain on Google Workspace with SPF, DKIM, and DMARC. Ask recipients to mark a wanted message **Not spam** and add the sender to their contacts.
 
-Each sent message is `multipart/alternative`: a `text/plain` part generated by stripping the HTML to readable text, plus the `text/html` part. Both are UTF-8, encoded as quoted-printable or base64. Headers include `From` with the display name (`Dire Express <sender>`), `Reply-To`, `Date`, a unique `Message-ID` on the sender's domain, `MIME-Version`, `List-Unsubscribe` (`mailto:` to the sender with subject `unsubscribe`), and `List-Unsubscribe-Post`. If the template has no visible unsubscribe line, one is added in the footer. Script tags and external font links are removed on the way out.
+Each sent message is `multipart/alternative`: a `text/plain` part generated by stripping the HTML to readable text, plus the `text/html` part. Both are UTF-8, encoded as quoted-printable or base64. Headers include `From` with the display name (`Dire Express <sender>`), `Reply-To`, `Date`, a unique `Message-ID` on the sender's domain, `MIME-Version`, `List-Unsubscribe` (`mailto:` to the sender with subject `unsubscribe`), and `List-Unsubscribe-Post`. `{{ unsubscribe }}` is replaced with that mailto link. If the template still has no visible unsubscribe line, one is added in the footer. Script tags and external font links are removed on the way out.
 
 The editor warns about spam triggers: an all-caps subject or `!!!`, an email that is mostly one big image, link shorteners, HTML over about 100 KB (Gmail clips messages that large), and images that are not on https.
 
