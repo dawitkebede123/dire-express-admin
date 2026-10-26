@@ -1,4 +1,5 @@
 import { explainBrevoFailure, type BrevoFailureKind } from "@/lib/newsletter/brevo-error";
+import { cleanCampaignPlainText } from "@/lib/newsletter/placeholders";
 import { BREVO_IMPORT_CHUNK, chunkItems } from "@/lib/newsletter/brevo-batch";
 import { brevoContactAttributes } from "@/lib/newsletter/brevo-html";
 import type { RecipientIdentity } from "@/lib/newsletter/personalize";
@@ -326,15 +327,20 @@ export async function createBrevoCampaign(apiKey: string, draft: BrevoCampaignDr
   // mirrorActive false keeps Brevo from adding a view-in-browser link; that flag is not plan-gated.
   const body: Record<string, unknown> = {
     name: draft.name.slice(0, 150),
-    subject: draft.subject,
+    subject: cleanCampaignPlainText(draft.subject) || draft.subject.trim(),
     sender: { name: draft.senderName, email: draft.senderEmail },
     replyTo: draft.senderEmail,
     htmlContent: draft.htmlContent,
     recipients: { listIds: [draft.listId] },
     inlineImageActivation: false,
     mirrorActive: false,
+    // Omitting these stores the sentinels [DEFAULT_HEADER] and [DEFAULT_FOOTER].
+    // A new account has no custom chrome, so the sent email shows that bracket text.
+    // An empty string is treated as omitted. A span survives trim and has no visible text.
+    header: "<span></span>",
+    footer: "<span></span>",
   };
-  const preview = draft.previewText.trim();
+  const preview = cleanCampaignPlainText(draft.previewText);
   if (preview) body.previewText = preview.slice(0, 300);
   const created = await brevoRequest<{ id?: number }>(apiKey, "/emailCampaigns", { method: "POST", body });
   const id = asId(created?.id);
