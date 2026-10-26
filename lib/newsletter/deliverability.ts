@@ -1,3 +1,4 @@
+import { BRAND_ORANGE, emphasizeNewsletterLinks } from "@/lib/newsletter/brand";
 import { decodeHtmlText } from "@/lib/newsletter/blocks";
 import { applyNewsletterLinks } from "@/lib/newsletter/links";
 import {
@@ -48,7 +49,7 @@ function gmailUnsubscribeHtml(sender: string) {
   const mailbox = sender.trim();
   const mailto = mailbox ? `mailto:${mailbox}?subject=${encodeURIComponent("unsubscribe")}` : "";
   if (mailto) {
-    return `<a href="${mailto}" style="color:#666666;text-decoration:underline;">Unsubscribe</a>`;
+    return `<a href="${mailto}" style="color:${BRAND_ORANGE};font-weight:700;font-size:14px;line-height:20px;text-decoration:underline;">Unsubscribe</a>`;
   }
   return "Reply with the subject unsubscribe.";
 }
@@ -62,7 +63,7 @@ export function ensureUnsubscribeFooter(html: string, sender: string) {
   const text = visibleText(next);
   if (/unsubscribe|ምዝገባ/i.test(text)) return next;
   const line = mailto
-    ? `<p style="margin:16px 0 0 0;font-family:Arial,sans-serif;font-size:12px;line-height:18px;color:#5B6B82;text-align:center;">If you no longer want these emails, <a href="${mailto}" style="color:#0B1F3A;text-decoration:underline;">unsubscribe</a>.</p>`
+    ? `<p style="margin:16px 0 0 0;font-family:Arial,sans-serif;font-size:14px;line-height:20px;color:#5B6B82;text-align:center;">If you no longer want these emails, <a href="${mailto}" style="color:${BRAND_ORANGE};font-weight:700;text-decoration:underline;">unsubscribe</a>.</p>`
     : `<p style="margin:16px 0 0 0;font-family:Arial,sans-serif;font-size:12px;line-height:18px;color:#5B6B82;text-align:center;">If you no longer want these emails, reply with the subject unsubscribe.</p>`;
   if (/<\/body>/i.test(next)) return next.replace(/<\/body>/i, `${line}\n</body>`);
   return `${next}\n${line}`;
@@ -70,7 +71,10 @@ export function ensureUnsubscribeFooter(html: string, sender: string) {
 
 export function prepareOutgoingHtml(html: string, sender: string, now: Date = new Date()) {
   const cleaned = stripSquareBracketText(
-    resolveNewsletterPlaceholders(sanitizeNewsletterHtml(applyNewsletterLinks(html)), now),
+    resolveNewsletterPlaceholders(
+      emphasizeNewsletterLinks(sanitizeNewsletterHtml(applyNewsletterLinks(html))),
+      now,
+    ),
   );
   return dropUnresolvedPlaceholders(ensureUnsubscribeFooter(cleaned, sender));
 }
