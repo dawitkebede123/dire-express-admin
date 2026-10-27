@@ -54,14 +54,16 @@ function restyleOrangeButtons(html: string) {
     (_match, td: string, open: string) => {
       const href = hrefOf(open);
       const website = /direexpress\.com\.et/i.test(href);
+      const declared = styleMap(/style\s*=\s*"([^"]*)"/i.exec(open)?.[1] ?? "").get("font-size");
+      const large = website || declared === "18px";
       return (
         td +
         mergeOpenTag(open, {
           "font-weight": "700",
           color: BRAND_NAVY,
           "text-decoration": "none",
-          "font-size": website ? "18px" : "16px",
-          "line-height": website ? "24px" : "22px",
+          "font-size": large ? "18px" : "16px",
+          "line-height": large ? "24px" : "22px",
         })
       );
     },

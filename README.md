@@ -119,6 +119,8 @@ Document ids for people are Firebase Auth uids (the old Postgres user id). Broke
 | `newsletter/campaigns/{id}` | One send run: `{ subject, total, sent, failed, createdAt, createdBy }`. `total` is how many recipients were included. A stopped run can have `sent + failed` less than `total`. A Brevo batch writes the same shape. |
 | `newsletter/lists/{listId}` | Named subscriber list: `name`, `createdAt`, `createdBy`, optional `brevoListId`. |
 | `newsletter/lists/{listId}/subscribers/{id}` | `email`, `name`, `addedAt`, and after a Brevo batch `sentAt` plus `brevoCampaignId`. A spreadsheet import reads every sheet and writes each new subscriber with its own `set()` (20 at a time) because `addedAt` must be the server timestamp. The Brevo API key is not stored here. |
+| `newsletter/welcomeTemplate` | Tester welcome: `{ subject, html, updatedAt, updatedBy }`. Same admin gate and timestamp rules as `newsletter/template`. |
+| `newsletter/welcomeRecipients/{id}` | One welcome recipient: `email`, `name`, `addedAt`, and after a welcome batch `sentAt` plus `brevoCampaignId`. This `sentAt` is not the newsletter `sentAt`. |
 
 `users.role` of `ADMIN` is the mobile user role. `adminUsers.role` is only `superadmin` or `admin`.
 
@@ -150,7 +152,15 @@ What the admin does in Brevo before the first send:
 
 Sent campaigns set `header` and `footer` to `<span></span>`. Leaving those fields out makes Brevo store `[DEFAULT_HEADER]` and `[DEFAULT_FOOTER]`, and an account with no custom header or footer shows that bracket text in the email. An empty string is treated the same as leaving the field out. The plain letter has no square brackets. A dark template already saved in Realtime Database still has editorial labels such as `[Headline]`, `[CTA]`, and `[ርዕስ]`, plus tokens such as `{{year}}` and `{{company_address_am}}`. Those labels are removed and those tokens are filled (the year, the send date, and direexpress.com.et) before the campaign is created. `{{ unsubscribe }}` stays so Brevo can replace it. Outlook conditionals and CSS attribute selectors are left in place.
 
-`npm run deploy` publishes `database.rules.json`. The new `newsletter/lists` node is admin-only, same gate as the rest of `newsletter`. No other rule changed. Deploy the rules before saving a list, or Realtime Database rejects the write.
+### Welcome email
+
+The Welcome email page (`/welcome`) edits `newsletter/welcomeTemplate` and sends the tester letter with the same Brevo key (localStorage only) or Gmail. Recipients come from a subscriber list, a spreadsheet, or one address, and are stored at `newsletter/welcomeRecipients`. Each new row is its own `set()` with `addedAt` as the server timestamp. After a batch, `sentAt` and `brevoCampaignId` are written on those people only. Newsletter `sentAt` is a different field, so a newsletter send does not count as the welcome. The Brevo batch stops at the free-plan remainder: 300 minus the sends logged today under `newsletter/campaigns`. Come back the next day for the next batch. A test send does not mark anyone sent.
+
+The default letter is Amharic, then English, with no images. Buttons use `#FE6100` and `#011B3C`. Contact names are stored in Title Case. `{{ unsubscribe }}` stays for Brevo. The letter is marked `<!--dx:welcome-->` so the newsletter freight-forwarder note is not inserted into it.
+
+`newsletter/welcomeTemplate` and `newsletter/welcomeRecipients` are in `database.rules.json`. Merge those two blocks into the live rules by hand. Publishing this file with `npm run deploy` would replace the live rules.
+
+`npm run deploy` publishes `database.rules.json`. The `newsletter/lists` node is admin-only, same gate as the rest of `newsletter`. Deploy the rules before saving a list, or Realtime Database rejects the write.
 
 ### Google Cloud setup (project dire-express)
 

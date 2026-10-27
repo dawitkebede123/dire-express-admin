@@ -54,6 +54,27 @@ export async function saveNewsletterTemplate(input: { subject: string; html: str
   });
 }
 
+export type NewsletterCampaignSummary = {
+  sent: number;
+  createdAt: number | null;
+};
+
+export async function loadNewsletterCampaignSummaries(): Promise<NewsletterCampaignSummary[]> {
+  await requireAdminUser();
+  const snap = await get(ref(getClientDb(), "newsletter/campaigns"));
+  if (!snap.exists() || !snap.val() || typeof snap.val() !== "object") return [];
+  const rows: NewsletterCampaignSummary[] = [];
+  for (const value of Object.values(snap.val() as Record<string, unknown>)) {
+    if (!value || typeof value !== "object") continue;
+    const node = value as Record<string, unknown>;
+    rows.push({
+      sent: typeof node.sent === "number" ? node.sent : 0,
+      createdAt: typeof node.createdAt === "number" ? node.createdAt : null,
+    });
+  }
+  return rows;
+}
+
 export async function logNewsletterCampaign(input: {
   subject: string;
   total: number;
