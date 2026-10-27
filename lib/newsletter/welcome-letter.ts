@@ -21,13 +21,10 @@ export const WELCOME_SENDER_NAME = DEFAULT_BREVO_SENDER_NAME;
 
 export const WELCOME_HELP_EMAIL = "dawitkebedewoldu@gmail.com";
 
-const HELP_AM = `ለማንኛውም እርዳታ በ ${WELCOME_HELP_EMAIL} ይጻፍሉልን።`;
+const HELP_AM = `ለማንኛውም እርዳታ በ ${WELCOME_HELP_EMAIL} ይጻፉልን።`;
 const HELP_EN = `For any help, email us at ${WELCOME_HELP_EMAIL}.`;
 
 const REPLY_LINE = "If you no longer want these notes, reply to this email.";
-
-const BUTTON_TABLE =
-  /<table\b[^>]*>\s*<tr>\s*<td\b[^>]*\bbgcolor=["']#FE6100["'][^>]*>\s*(<a\b[^>]*href=["'][^"']+["'][^>]*>[\s\S]*?<\/a>)\s*<\/td>\s*<\/tr>\s*<\/table>/gi;
 
 function mailboxLocalName(email: string) {
   const local = email.split("@")[0] ?? "";
@@ -57,36 +54,6 @@ export function welcomeSenderEmail(configured: string) {
   const email = configured.trim();
   if (isEmailAddress(email) && email.toLowerCase().endsWith("@direexpress.com.et")) return email;
   return DEFAULT_BREVO_SENDER_EMAIL;
-}
-
-function anchorLabel(inner: string) {
-  return inner
-    .replace(/<[^>]+>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function flattenOrangeButtons(html: string) {
-  return html.replace(BUTTON_TABLE, (_match, anchor: string) => `<p style="margin:0 0 16px 0;">${anchor}</p>`);
-}
-
-function dropRawUrlDuplicates(html: string) {
-  const labeled = new Set<string>();
-  for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
-    const href = match[1].replace(/&amp;/g, "&");
-    const label = anchorLabel(match[2]);
-    if (label && label !== href && !/^https?:\/\//i.test(label)) labeled.add(href);
-  }
-  return html.replace(
-    /<p\b[^>]*>\s*(<a\b[^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<\/a>)\s*<\/p>/gi,
-    (full, _anchor: string, href: string) => {
-      const normalized = href.replace(/&amp;/g, "&");
-      const label = anchorLabel(full);
-      if ((label === normalized || label === href) && labeled.has(normalized)) return "";
-      return full;
-    },
-  );
 }
 
 function stripMarketingUnsubscribe(html: string) {
@@ -143,18 +110,14 @@ function applyName(value: string, name: string, escape: boolean) {
     .replace(/Hello\s+,/g, "Hello,");
 }
 
-// What actually goes out: a text letter, no images we added, no Brevo unsubscribe tag.
+// What actually goes out: the designed letter, no images we added, no Brevo unsubscribe tag.
 export function prepareWelcomeLetter(html: string, name: string) {
   const cleaned = ensureHelpLines(
     stripMarketingUnsubscribe(
-      dropRawUrlDuplicates(
-        flattenOrangeButtons(
-          sanitizeNewsletterHtml(html)
-            .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
-            .replace(/<img\b[^>]*>/gi, "")
-            .replace(/background(?:-image)?\s*:\s*url\([^)]*\)\s*;?/gi, ""),
-        ),
-      ),
+      sanitizeNewsletterHtml(html)
+        .replaceAll("ይጻፍሉልን", "ይጻፉልን")
+        .replace(/<img\b[^>]*>/gi, "")
+        .replace(/background(?:-image)?\s*:\s*url\([^)]*\)\s*;?/gi, ""),
     ),
   );
   return ensureReplyLine(applyName(cleaned, name.trim(), true));
