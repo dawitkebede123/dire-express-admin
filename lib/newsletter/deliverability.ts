@@ -90,6 +90,17 @@ export function htmlToPlainText(html: string) {
   text = text.replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_match, href: string, label: string) => {
     const words = label.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
     if (!href || href.startsWith("#") || href.includes("{{")) return words;
+    if (/^mailto:/i.test(href)) {
+      const raw = href.slice(href.indexOf(":") + 1).split("?")[0] ?? "";
+      let mailbox = raw;
+      try {
+        mailbox = decodeURIComponent(raw);
+      } catch {
+        mailbox = raw;
+      }
+      if (!words || words.toLowerCase() === mailbox.toLowerCase()) return words || mailbox;
+      return `${words} (${mailbox})`;
+    }
     if (!words || words === href) return href;
     return `${words} (${href})`;
   });

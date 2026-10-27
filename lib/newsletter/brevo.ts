@@ -2,6 +2,8 @@ import { explainBrevoFailure, type BrevoFailureKind } from "@/lib/newsletter/bre
 import { cleanCampaignPlainText } from "@/lib/newsletter/placeholders";
 import { BREVO_IMPORT_CHUNK, chunkItems } from "@/lib/newsletter/brevo-batch";
 import { brevoContactAttributes } from "@/lib/newsletter/brevo-html";
+import { htmlToPlainText } from "@/lib/newsletter/deliverability";
+import { isEmailAddress } from "@/lib/newsletter/recipients";
 import type { RecipientIdentity } from "@/lib/newsletter/personalize";
 
 // Checked 2026-10-26: OPTIONS and GET from https://dire-express-admin.web.app and
@@ -359,29 +361,55 @@ export async function sendBrevoCampaignNow(apiKey: string, campaignId: number) {
   await brevoRequest(apiKey, `/emailCampaigns/${campaignId}/sendNow`, { method: "POST" });
 }
 
-// One transactional message to one address. This does not create a contact list or a campaign.
+// One transactional message to one address. No cc, bcc, list, or campaign.
+// Brevo's HTTP API has no switch that removes open and click tracking. The
+// X-Mailin-Track headers are the SMTP switches some accounts honor.
+// contactPixelTrackingConsent false only anonymises tracking when that account
+// feature is on. It does not remove the pixel.
 export async function sendBrevoTransactional(
   apiKey: string,
   message: {
     senderName: string;
     senderEmail: string;
+    replyToEmail: string;
+    replyToName?: string;
     toEmail: string;
     toName?: string;
     subject: string;
     htmlContent: string;
+    textContent: string;
   },
 ) {
-  const to: { email: string; name?: string } = { email: message.toEmail };
-  const name = message.toName?.trim();
-  if (name) to.name = name.slice(0, 200);
+  const toEmail = message.toEmail.trim();
+  if (!isEmailAddress(toEmail)) throw new Error("Send exactly one recipient.");
+  const senderEmail = message.senderEmail.trim();
+  if (!isEmailAddress(senderEmail)) throw new Error("The sender email is not valid.");
+  const replyToEmail = message.replyToEmail.trim();
+  if (!isEmailAddress(replyToEmail)) throw new Error("The reply-to email is not valid.");
+  const textContent = message.textContent.trim() || htmlToPlainText(message.htmlContent);
+  if (!textContent) throw new Error("A plain-text version is required.");
+  const senderName = message.senderName.trim().slice(0, 70);
+  const replyToName = (message.replyToName ?? senderName).trim().slice(0, 70);
+  const to: { email: string; name?: string; contactPixelTrackingConsent: false } = {
+    email: toEmail,
+    contactPixelTrackingConsent: false,
+  };
+  const name = message.toName?.trim().slice(0, 70);
+  if (name) to.name = name;
   const body = await brevoRequest<{ messageId?: string }>(apiKey, "/smtp/email", {
     method: "POST",
     body: {
-      sender: { name: message.senderName, email: message.senderEmail },
+      sender: { name: senderName, email: senderEmail },
       to: [to],
-      replyTo: { email: message.senderEmail, name: message.senderName },
+      replyTo: { email: replyToEmail, name: replyToName || senderName },
       subject: message.subject,
       htmlContent: message.htmlContent,
+      textContent,
+      headers: {
+        "X-Mailin-Track": "false",
+        "X-Mailin-Track-Clicks": "false",
+        "X-Mailin-Track-Opens": "false",
+      },
     },
   });
   return typeof body?.messageId === "string" ? body.messageId : "";

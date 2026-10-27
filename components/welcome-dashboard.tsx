@@ -12,11 +12,19 @@ import {
   useBrevoSettings,
 } from "@/lib/newsletter/brevo-storage";
 import { isEmailAddress } from "@/lib/newsletter/recipients";
-import { recipientDisplayName } from "@/lib/newsletter/personalize";
-import { toTitleCaseName } from "@/lib/newsletter/title-case";
 import { parseWelcomeAddresses } from "@/lib/newsletter/welcome-addresses";
+import {
+  knownPersonName,
+  personalizeWelcome,
+  prepareWelcomeLetter,
+  WELCOME_HELP_EMAIL,
+  WELCOME_SENDER_NAME,
+  WELCOME_TRACKING_NOTE,
+  welcomeSenderEmail,
+} from "@/lib/newsletter/welcome-letter";
 import { brevoRemainingToday, sentOnLocalDay } from "@/lib/newsletter/welcome-quota";
 import { DEFAULT_WELCOME_HTML, DEFAULT_WELCOME_SUBJECT } from "@/lib/newsletter/welcome-template";
+import { loadSubscriberLists } from "@/lib/rtdb/newsletter-lists";
 import { permissionMessage } from "@/lib/rtdb/client-writes";
 import { loadNewsletterCampaignSummaries, logNewsletterCampaign } from "@/lib/rtdb/newsletter";
 import {
@@ -46,10 +54,6 @@ type ResendChoice = {
 
 function messageFrom(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback;
-}
-
-function personName(email: string) {
-  return toTitleCaseName(recipientDisplayName({ email, name: "" }));
 }
 
 export function WelcomeDashboard() {
@@ -121,6 +125,7 @@ export function WelcomeDashboard() {
   }, [apiKey]);
 
   const remaining = brevoRemainingToday(sentToday);
+  const fromAddress = welcomeSenderEmail(settings.senderEmail);
   const parsed = parseWelcomeAddresses(addressDraft);
   const sentEmails = new Set(recipients.filter((row) => row.sentAt != null).map((row) => row.email));
   const already = parsed.valid.filter((email) => sentEmails.has(email));
@@ -185,16 +190,23 @@ export function WelcomeDashboard() {
 
   async function deliver(emails: string[]) {
     const trimmedSubject = subject.trim();
-    const sender = settings.senderName.trim();
-    const from = settings.senderEmail.trim();
+    const from = welcomeSenderEmail(settings.senderEmail);
     if (!apiKey) throw new Error("Save a Brevo API key in this browser first.");
     if (!trimmedSubject) throw new Error("The subject is empty.");
     if (html.trim().length < 11) throw new Error("The welcome letter is too short.");
-    if (!sender) throw new Error("Enter the sender name.");
     if (!isEmailAddress(from)) throw new Error("Enter a valid sender email. The default is contact@direexpress.com.et.");
     if (!emails.length) throw new Error("Enter at least one email address.");
 
-    const latest = await refreshAudience();
+    const [latest, lists] = await Promise.all([refreshAudience(), loadSubscriberLists()]);
+    const namesOnLists = new Map<string, string[]>();
+    for (const list of lists) {
+      for (const subscriber of list.subscribers) {
+        const known = namesOnLists.get(subscriber.email) ?? [];
+        if (subscriber.name.trim()) known.push(subscriber.name);
+        namesOnLists.set(subscriber.email, known);
+      }
+    }
+    const storedNames = new Map(latest.recipients.map((row) => [row.email, row.name]));
     const remainingNow = brevoRemainingToday(latest.sentToday);
     if (emails.length > remainingNow) {
       throw new Error(
@@ -221,15 +233,23 @@ export function WelcomeDashboard() {
       const batch = await Promise.all(
         slice.map(async (email) => {
           try {
-            const messageId = await sendBrevoTransactional(apiKey, {
-              senderName: sender,
-              senderEmail: from,
-              toEmail: email,
-              toName: personName(email),
-              subject: trimmedSubject,
-              htmlContent: html,
+            const name = knownPersonName(email, {
+              listNames: namesOnLists.get(email) ?? [],
+              storedName: storedNames.get(email),
             });
-            return { email, status: "sent" as const, detail: "Sent", messageId };
+            const letter = personalizeWelcome({ subject: trimmedSubject, html }, name);
+            const messageId = await sendBrevoTransactional(apiKey, {
+              senderName: WELCOME_SENDER_NAME,
+              senderEmail: from,
+              replyToEmail: WELCOME_HELP_EMAIL,
+              replyToName: WELCOME_SENDER_NAME,
+              toEmail: email,
+              toName: name || undefined,
+              subject: letter.subject,
+              htmlContent: letter.html,
+              textContent: letter.text,
+            });
+            return { email, status: "sent" as const, detail: "Sent", messageId, name };
           } catch (sendError) {
             if (sendError instanceof BrevoApiError && sendError.kind === "daily_limit") stopMessage = sendError.message;
             return {
@@ -243,7 +263,7 @@ export function WelcomeDashboard() {
       );
       for (const row of batch) {
         outcome.push({ email: row.email, status: row.status, detail: row.detail });
-        if (row.status === "sent") sentRows.push({ email: row.email, name: personName(row.email), messageId: row.messageId });
+        if (row.status === "sent") sentRows.push({ email: row.email, name: row.name, messageId: row.messageId });
       }
       setResults([...outcome]);
     }
@@ -358,8 +378,8 @@ export function WelcomeDashboard() {
     <div className="mx-auto max-w-6xl">
       <h1 className="text-2xl font-semibold">Welcome</h1>
       <p className="mt-1 max-w-3xl text-sm text-muted">
-        Send the welcome letter through Brevo to the addresses you type. Each address is its own transactional email,
-        not a list campaign. The API key stays in this browser’s localStorage.
+        Send the welcome letter through Brevo to the addresses you type. Each address is its own message, with the
+        HTML and a plain-text copy. The API key stays in this browser’s localStorage.
       </p>
 
       <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -436,15 +456,15 @@ export function WelcomeDashboard() {
             ) : null}
           </div>
           <label className="flex flex-col gap-1.5 text-sm font-medium">
-            Sender name
-            <input
-              value={settings.senderName}
-              onChange={(event) => patchBrevoSettings({ senderName: event.target.value })}
-              className={`h-11 ${fieldClass}`}
-            />
+            From
+            <input value={`${WELCOME_SENDER_NAME} <${fromAddress}>`} readOnly className={`h-11 ${fieldClass}`} />
           </label>
           <label className="flex flex-col gap-1.5 text-sm font-medium">
-            Sender email
+            Reply-To
+            <input value={WELCOME_HELP_EMAIL} readOnly className={`h-11 ${fieldClass}`} />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm font-medium sm:col-span-2">
+            Sender email on direexpress.com.et
             <input
               value={settings.senderEmail}
               onChange={(event) => patchBrevoSettings({ senderEmail: event.target.value })}
@@ -452,6 +472,7 @@ export function WelcomeDashboard() {
             />
           </label>
         </div>
+        <p className="mt-4 text-sm text-muted">{WELCOME_TRACKING_NOTE}</p>
         <div className="mt-4 flex flex-wrap gap-3">
           <button
             type="button"
@@ -500,7 +521,8 @@ export function WelcomeDashboard() {
               <p className="mt-1 text-sm text-muted">
                 Saved at newsletter/welcomeTemplate.
                 {updatedAt ? ` Last saved ${new Date(updatedAt).toLocaleString()}.` : " Not saved yet."} The live
-                database rules have to include that node before the first save.
+                database rules have to include that node before the first save. The preview is the letter that will
+                be sent. When a name is on file, the greeting uses it.
               </p>
             </div>
             <button
@@ -533,7 +555,12 @@ export function WelcomeDashboard() {
           >
             {saving ? "Saving..." : "Save letter"}
           </button>
-          <iframe title="Welcome preview" sandbox="" srcDoc={html} className="mt-4 h-[720px] w-full rounded-xl border border-border bg-white" />
+          <iframe
+            title="Welcome preview"
+            sandbox=""
+            srcDoc={prepareWelcomeLetter(html, "")}
+            className="mt-4 h-[720px] w-full rounded-xl border border-border bg-white"
+          />
         </section>
       ) : null}
 
