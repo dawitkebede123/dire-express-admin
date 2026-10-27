@@ -25,7 +25,7 @@ import {
   useBrevoApiKey,
   useBrevoSettings,
 } from "@/lib/newsletter/brevo-storage";
-import { isEmailAddress, parseRecipientFile } from "@/lib/newsletter/recipients";
+import { isEmailAddress, parseRecipientFile, type RecipientParseResult } from "@/lib/newsletter/recipients";
 import { permissionMessage } from "@/lib/rtdb/client-writes";
 import { logNewsletterCampaign } from "@/lib/rtdb/newsletter";
 import {
@@ -36,6 +36,7 @@ import {
   loadSubscriberLists,
   markSubscribersSent,
   rememberBrevoListId,
+  type AddSubscribersResult,
   type NewsletterSubscriberList,
 } from "@/lib/rtdb/newsletter-lists";
 
@@ -56,6 +57,68 @@ type PendingSend = {
   alreadySent: number;
   waitingAfter: number;
 };
+
+const SKIP_REASON_ORDER = [
+  "no email found",
+  "invalid email",
+  "duplicate in file",
+  "duplicate already in list",
+  "write failed",
+];
+
+export type ImportSkipGroup = {
+  reason: string;
+  count: number;
+  examples: string[];
+};
+
+export type ImportReport = {
+  added: number;
+  renamed: number;
+  alreadyInList: number;
+  groups: ImportSkipGroup[];
+};
+
+function exampleLabel(email: string, name: string) {
+  const label = [email, name].filter(Boolean).join(" — ");
+  return label || "(empty row)";
+}
+
+function buildImportReport(parsed: RecipientParseResult, result: AddSubscribersResult): ImportReport {
+  const buckets = new Map<string, string[]>();
+  for (const row of parsed.recipients) {
+    if (row.status === "valid") continue;
+    const examples = buckets.get(row.reason) ?? [];
+    examples.push(exampleLabel(row.email, row.name));
+    buckets.set(row.reason, examples);
+  }
+  if (result.alreadyInList) {
+    buckets.set("duplicate already in list", result.alreadyExamples);
+  }
+  if (result.writeFailed.length) {
+    buckets.set(
+      "write failed",
+      result.writeFailed.slice(0, 3).map((row) => `${row.email}: ${row.message}`),
+    );
+  }
+  const groups = [...buckets.entries()]
+    .map(([reason, examples]) => ({
+      reason,
+      count: reason === "duplicate already in list" ? result.alreadyInList : reason === "write failed" ? result.writeFailed.length : examples.length,
+      examples: examples.slice(0, 3),
+    }))
+    .sort((a, b) => {
+      const aIndex = SKIP_REASON_ORDER.indexOf(a.reason);
+      const bIndex = SKIP_REASON_ORDER.indexOf(b.reason);
+      return (aIndex < 0 ? SKIP_REASON_ORDER.length : aIndex) - (bIndex < 0 ? SKIP_REASON_ORDER.length : bIndex);
+    });
+  return {
+    added: result.added,
+    renamed: result.renamed,
+    alreadyInList: result.alreadyInList,
+    groups,
+  };
+}
 
 type PendingMark = {
   listId: string;
@@ -96,6 +159,7 @@ export function useBrevoNewsletter(options: {
   const [selectedListId, setSelectedListId] = useState("");
   const [newListName, setNewListName] = useState("");
   const [status, setStatus] = useState("");
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingSend, setPendingSend] = useState<PendingSend | null>(null);
@@ -239,6 +303,7 @@ export function useBrevoNewsletter(options: {
     if (!file || busy) return;
     setBusy(true);
     setError("");
+    setImportReport(null);
     try {
       let listId = selectedListId;
       let listName = lists.find((item) => item.id === listId)?.name ?? "";
@@ -258,10 +323,17 @@ export function useBrevoNewsletter(options: {
           setStatus(`Saving ${saved} of ${total} contacts…`);
         },
       );
-      await refreshLists();
+      const report = buildImportReport(parsed, result);
+      setImportReport(report);
       setStatus(
-        `“${listName || "List"}”: added ${result.added}, updated ${result.renamed} names, skipped ${parsed.invalidCount} rows.`,
+        `“${listName || "List"}”: added ${result.added}, updated ${result.renamed} names, ${result.alreadyInList} already in the list.`,
       );
+      if (result.writeFailed.length) {
+        const message = `Could not save ${result.writeFailed.length} contact${result.writeFailed.length === 1 ? "" : "s"}. ${result.writeFailed[0]?.message ?? "Write failed."}`;
+        setError(message);
+        toast.error(message.length > 220 ? `${message.slice(0, 220)}…` : message);
+      }
+      await refreshLists();
     } catch (importError) {
       await refreshLists().catch(() => undefined);
       fail(importError, "Could not import that file.");
@@ -538,6 +610,7 @@ export function useBrevoNewsletter(options: {
     unsentCount: unsent.length,
     batch,
     status,
+    importReport,
     error,
     busy,
     pendingSend,
@@ -713,8 +786,9 @@ export function BrevoAudience({ controller }: { controller: BrevoNewsletterContr
     <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="text-sm font-semibold">Brevo subscribers</h2>
       <p className="mt-2 text-sm text-muted">
-        Lists live in Realtime Database at newsletter/lists. A spreadsheet import reads every sheet and saves every
-        valid row, 20 contacts at a time. Sync copies the chosen list into a Brevo contact list in batches of 100 and
+        Lists live in Realtime Database at newsletter/lists. A spreadsheet import reads every sheet. In each row,
+        whichever cell is an email address is the address and the other cell is the name. New contacts are saved 20 at
+        a time. Sync copies the chosen list into a Brevo contact list in batches of 100 and
         does not send. Send now syncs that list, then creates a campaign for the next unsent batch only, so people
         already mailed are not included again today. The table shows 50 rows at a time.
       </p>
@@ -775,6 +849,25 @@ export function BrevoAudience({ controller }: { controller: BrevoNewsletterContr
           className="mt-2 block font-normal"
         />
       </label>
+      {controller.importReport ? (
+        <div className="mt-4 rounded-lg border border-border px-4 py-3 text-sm">
+          <p>
+            Added <span className="font-semibold">{controller.importReport.added}</span>, updated{" "}
+            <span className="font-semibold">{controller.importReport.renamed}</span> names,{" "}
+            <span className="font-semibold">{controller.importReport.alreadyInList}</span> already in the list.
+          </p>
+          {controller.importReport.groups.length ? (
+            <ul className="mt-2 space-y-1">
+              {controller.importReport.groups.map((group) => (
+                <li key={group.reason}>
+                  <span className="font-semibold">{group.count}</span> {group.reason}
+                  {group.examples.length ? <span className="text-muted"> — {group.examples.join("; ")}</span> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
       {list ? (
         <>
           <p className="mt-4 text-sm">

@@ -579,9 +579,9 @@ export function NewsletterDashboard() {
       <section className="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm">
         <h2 className="text-sm font-semibold">Recipients</h2>
         <p className="mt-2 text-sm text-muted">
-          Attach an .xlsx, .xls, or .csv file. The email column is the header containing “email”, or the first column
-          that contains email addresses. The name is the whole cell, including spaces and commas, and fills {"{{name}}"}{" "}
-          and {"{{first_name}}"}. Addresses are validated and duplicates are skipped.
+          Attach an .xlsx, .xls, or .csv file. Each row is read on its own: whichever cell is an email address is the
+          address, and the other cell is the name, including spaces and commas. That name fills {"{{name}}"} and{" "}
+          {"{{first_name}}"}. Headers are ignored. Addresses are trimmed, lowercased, and duplicates are skipped.
         </p>
         <input
           type="file"
@@ -600,8 +600,8 @@ export function NewsletterDashboard() {
             <p className="mt-4 text-sm">
               <span className="font-semibold">{parsed.validCount}</span> valid,{" "}
               <span className="font-semibold">{parsed.invalidCount}</span> invalid
-              {fileName ? ` in ${fileName}` : ""}. Email column: {parsed.emailHeader}.
-              {parsed.nameHeader ? ` Name column: ${parsed.nameHeader}.` : " No name column found."}
+              {fileName ? ` in ${fileName}` : ""}. Each row uses whichever cell is an email address.
+              {parsed.nameHeader ? ` Name header: ${parsed.nameHeader}.` : ""}
             </p>
             {parsed.validCount > GMAIL_DAILY_LIMIT ? (
               <p className="mt-2 text-sm text-danger">

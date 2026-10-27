@@ -34,104 +34,135 @@ export function recipientNameFromCell(value: unknown) {
   return asCell(value);
 }
 
-function headerLooksLikeEmail(value: string) {
-  return /e-?mail/i.test(value);
+// Headers are matched after trim, so "name " is the name column label and is not a contact.
+const HEADER_LABEL =
+  /^(?:e-?mail(?:\s+(?:address|id))?|mail|ኢሜይል|ኢሜል|name|full\s+name|first\s+name|last\s+name|company(?:\s+name)?|contact(?:\s+name)?|recipient(?:\s+name)?|ስም|organization|organisation|phone|telephone|mobile|tel|address|city|country|notes?|comments?|id|no|#|number)$/i;
+
+const EMAIL_HEADER = /^(?:e-?mail(?:\s+(?:address|id))?|mail|ኢሜይል|ኢሜል)$/i;
+
+function emailsInCell(value: string) {
+  const emails: string[] = [];
+  for (const piece of value.split(/[,;/\s]+/)) {
+    const token = piece
+      .replace(/^mailto:/i, "")
+      .replace(/^[<"'(]+|[>"')]+$/g, "")
+      .trim()
+      .toLowerCase();
+    // Realtime Database accepts an email string longer than 3 and at most 200.
+    if (token.length > 3 && token.length <= 200 && isEmailAddress(token)) emails.push(token);
+  }
+  return emails;
 }
 
-function nameScore(value: string) {
-  if (/e-?mail/i.test(value) || /user\s*name/i.test(value)) return 0;
-  if (/^name$/i.test(value.trim())) return 3;
-  if (/full\s*name|first\s*name|recipient\s*name|contact\s*name/i.test(value)) return 2;
-  if (/name/i.test(value)) return 1;
-  return 0;
+function isHeaderRow(row: string[]) {
+  const filled = row.filter((cell) => cell !== "");
+  if (!filled.length) return false;
+  if (filled.some((cell) => cell.includes("@"))) return false;
+  return filled.every((cell) => HEADER_LABEL.test(cell));
 }
 
-function columnLabel(index: number) {
-  let n = index + 1;
-  let label = "";
-  while (n > 0) {
-    const rem = (n - 1) % 26;
-    label = String.fromCharCode(65 + rem) + label;
-    n = Math.floor((n - 1) / 26);
-  }
-  return `Column ${label}`;
-}
-
-function firstEmailColumn(rows: string[][]) {
-  const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-  for (let index = 0; index < width; index += 1) {
-    if (rows.some((row) => isEmailAddress((row[index] ?? "").replace(/^mailto:/i, "").trim()))) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-export function classifyRecipientRows(matrix: unknown[][]): RecipientParseResult {
-  const rows = matrix
-    .map((row) => (Array.isArray(row) ? row.map(asCell) : []))
-    .filter((row) => row.some((cell) => cell !== ""));
-
-  if (rows.length === 0) {
-    return {
-      recipients: [],
-      validCount: 0,
-      invalidCount: 0,
-      emailHeader: "Email",
-      nameHeader: null,
-    };
-  }
-
-  const header = rows[0];
-  const hasHeader = header.some(headerLooksLikeEmail);
-  const data = hasHeader ? rows.slice(1) : rows;
-  let emailIndex = hasHeader ? header.findIndex(headerLooksLikeEmail) : firstEmailColumn(data);
-  if (emailIndex < 0) emailIndex = 0;
-
-  let nameIndex: number | null = null;
-  if (hasHeader) {
-    let bestScore = 0;
-    header.forEach((cell, index) => {
-      if (index === emailIndex) return;
-      const score = nameScore(cell);
-      if (score > bestScore) {
-        bestScore = score;
-        nameIndex = index;
-      }
-    });
-  }
-
-  const seen = new Set<string>();
-  const recipients: ParsedRecipient[] = [];
-  for (const row of data) {
-    const rawEmail = (row[emailIndex] ?? "").replace(/^mailto:/i, "").trim();
-    const name = nameIndex === null ? "" : recipientNameFromCell(row[nameIndex] ?? "");
-    if (!rawEmail && !name) continue;
-    if (!rawEmail) {
-      recipients.push({ email: "", name, status: "invalid", reason: "Missing email" });
-      continue;
-    }
-    if (!isEmailAddress(rawEmail)) {
-      recipients.push({ email: rawEmail, name, status: "invalid", reason: "Invalid email" });
-      continue;
-    }
-    const key = rawEmail.toLowerCase();
-    if (seen.has(key)) {
-      recipients.push({ email: rawEmail, name, status: "invalid", reason: "Duplicate" });
-      continue;
-    }
-    seen.add(key);
-    recipients.push({ email: rawEmail, name, status: "valid", reason: "" });
-  }
-
+function finishParse(
+  recipients: ParsedRecipient[],
+  emailHeader: string,
+  nameHeader: string | null,
+): RecipientParseResult {
   const validCount = recipients.filter((row) => row.status === "valid").length;
   return {
     recipients,
     validCount,
     invalidCount: recipients.length - validCount,
-    emailHeader: hasHeader && header[emailIndex] ? header[emailIndex] : columnLabel(emailIndex),
-    nameHeader: nameIndex === null ? null : header[nameIndex] || columnLabel(nameIndex),
+    emailHeader,
+    nameHeader,
   };
+}
+
+// Each row is read on its own. Whichever cell is an email address is the address,
+// and the other non-empty cells are the name. A swapped column later in the sheet
+// still imports. Header rows and blank rows are not counted as errors.
+export function classifyRecipientRows(matrix: unknown[][]): RecipientParseResult {
+  const rows = matrix
+    .map((row) => (Array.isArray(row) ? row.map(asCell) : []))
+    .filter((row) => row.some((cell) => cell !== ""));
+
+  const seen = new Set<string>();
+  const recipients: ParsedRecipient[] = [];
+  let emailHeader = "per row";
+  let nameHeader: string | null = null;
+
+  for (const row of rows) {
+    if (isHeaderRow(row)) {
+      const emailLabel = row.find((cell) => EMAIL_HEADER.test(cell));
+      const nameLabel = row.find((cell) => cell !== emailLabel && HEADER_LABEL.test(cell));
+      if (emailLabel) emailHeader = emailLabel;
+      if (nameLabel) nameHeader = nameLabel;
+      continue;
+    }
+
+    const emails: string[] = [];
+    const nameParts: string[] = [];
+    let invalidRaw = "";
+    for (const cell of row) {
+      if (!cell) continue;
+      const found = emailsInCell(cell);
+      if (found.length) {
+        emails.push(...found);
+        continue;
+      }
+      if (cell.includes("@")) {
+        if (!invalidRaw) invalidRaw = cell;
+        continue;
+      }
+      nameParts.push(cell);
+    }
+    const name = nameParts.join(" ").replace(/\s+/g, " ").trim().slice(0, 200);
+
+    if (!emails.length) {
+      if (!name && !invalidRaw) continue;
+      if (invalidRaw) {
+        recipients.push({
+          email: invalidRaw.slice(0, 200),
+          name,
+          status: "invalid",
+          reason: "invalid email",
+        });
+      } else {
+        recipients.push({ email: "", name, status: "invalid", reason: "no email found" });
+      }
+      continue;
+    }
+
+    for (const email of emails) {
+      if (seen.has(email)) {
+        recipients.push({ email, name, status: "invalid", reason: "duplicate in file" });
+        continue;
+      }
+      seen.add(email);
+      recipients.push({ email, name, status: "valid", reason: "" });
+    }
+  }
+
+  return finishParse(recipients, emailHeader, nameHeader);
+}
+
+export function countExistingSubscribers(existingEmails: Iterable<string>, recipients: ParsedRecipient[]) {
+  const existing = new Set<string>();
+  for (const email of existingEmails) {
+    const key = email.trim().toLowerCase();
+    if (key) existing.add(key);
+  }
+  let alreadyInList = 0;
+  let toAdd = 0;
+  const alreadyExamples: string[] = [];
+  for (const row of recipients) {
+    if (row.status !== "valid") continue;
+    if (existing.has(row.email)) {
+      alreadyInList += 1;
+      if (alreadyExamples.length < 3) alreadyExamples.push(row.email);
+    } else {
+      toAdd += 1;
+    }
+  }
+  return { toAdd, alreadyInList, alreadyExamples };
 }
 
 const EMPTY_PARSE: RecipientParseResult = {
@@ -159,7 +190,7 @@ export function combineRecipientParses(parts: RecipientParseResult[]) {
       const key = row.email.trim().toLowerCase();
       if (row.status === "valid" && key) {
         if (seen.has(key)) {
-          recipients.push({ ...row, status: "invalid", reason: "Duplicate" });
+          recipients.push({ ...row, status: "invalid", reason: "duplicate in file" });
           continue;
         }
         seen.add(key);
