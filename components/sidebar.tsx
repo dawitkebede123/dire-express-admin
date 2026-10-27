@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  MailPlus,
   Settings,
   Users,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/demo-requests", label: "Demo requests", icon: Inbox },
   { href: "/newsletter", label: "Newsletter", icon: Mail },
+  { href: "/welcome", label: "Welcome", icon: MailPlus },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

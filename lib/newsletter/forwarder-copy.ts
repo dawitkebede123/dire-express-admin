@@ -105,7 +105,8 @@ function stripTipSection(html: string) {
 }
 
 function insertForwarderNote(html: string) {
-  if (html.includes(NOTE_MARKER) || html.includes(FORWARDER_NOTE_AM)) return html;
+  // The tester welcome letter is not the newsletter. Leave it alone.
+  if (html.includes(NOTE_MARKER) || html.includes(FORWARDER_NOTE_AM) || html.includes("dx:welcome")) return html;
   const note = forwarderNoteHtml();
   const intro = "<!-- ============ INTRO ============ -->";
   const introAt = html.indexOf(intro);
