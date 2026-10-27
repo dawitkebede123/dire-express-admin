@@ -2,7 +2,9 @@
 
 import { get, push, ref, remove, serverTimestamp, set, update } from "firebase/database";
 import { getClientDb, waitForUser } from "@/lib/firebase/client";
+import { isEmailAddress } from "@/lib/newsletter/recipients";
 import { NOT_AN_ADMIN, readDashboardAdmin } from "@/lib/rtdb/admin-access";
+import { permissionMessage } from "@/lib/rtdb/client-writes";
 
 const LIST_NAME_LIMIT = 120;
 const WRITE_CHUNK = 100;
@@ -124,11 +126,24 @@ export async function rememberBrevoListId(listId: string, brevoListId: number) {
   await update(ref(getClientDb(), `newsletter/lists/${listId}`), { brevoListId });
 }
 
+export type SubscriberWriteFailure = {
+  email: string;
+  message: string;
+};
+
+export type AddSubscribersResult = {
+  added: number;
+  renamed: number;
+  alreadyInList: number;
+  alreadyExamples: string[];
+  writeFailed: SubscriberWriteFailure[];
+};
+
 export async function addSubscribers(
   listId: string,
   drafts: SubscriberDraft[],
   onProgress?: (saved: number, total: number) => void,
-) {
+): Promise<AddSubscribersResult> {
   await requireAdminUser();
   if (!listId || /[.#$[\]/]/.test(listId)) throw new Error("Invalid list id.");
   const snap = await get(ref(getClientDb(), `newsletter/lists/${listId}/subscribers`));
@@ -140,31 +155,56 @@ export async function addSubscribers(
     }
   }
 
-  const updates: Record<string, unknown> = {};
   const fresh: { id: string; email: string; name: string }[] = [];
-  let renamed = 0;
+  const renames: { path: string; email: string; name: string }[] = [];
+  const writeFailed: SubscriberWriteFailure[] = [];
+  const alreadyExamples: string[] = [];
+  let alreadyInList = 0;
   const base = `newsletter/lists/${listId}/subscribers`;
   const seen = new Set<string>();
   for (const draft of drafts) {
-    const email = draft.email.trim().toLowerCase();
+    const email = String(draft.email ?? "").trim().toLowerCase();
     if (!email || seen.has(email)) continue;
     seen.add(email);
-    const name = draft.name.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+    const name = String(draft.name ?? "")
+      .replace(/[\r\n]+/g, " ")
+      .trim()
+      .slice(0, 200);
+    if (email.length <= 3 || email.length > 200 || !isEmailAddress(email)) {
+      writeFailed.push({ email: email.slice(0, 200), message: "invalid email" });
+      continue;
+    }
     const current = existing.get(email);
     if (current) {
+      alreadyInList += 1;
+      if (alreadyExamples.length < 3) alreadyExamples.push(email);
       if (name && name !== current.name) {
-        updates[`${base}/${current.id}/name`] = name;
-        renamed += 1;
+        renames.push({ path: `${base}/${current.id}/name`, email, name });
       }
       continue;
     }
     const id = push(ref(getClientDb(), base)).key;
-    if (!id) throw new Error("Could not allocate a subscriber id.");
+    if (!id) {
+      writeFailed.push({ email, message: "Could not allocate a subscriber id." });
+      continue;
+    }
     fresh.push({ id, email, name });
   }
-  if (Object.keys(updates).length) await writeChunks(updates);
 
   const db = getClientDb();
+  let renamed = 0;
+  for (let index = 0; index < renames.length; index += WRITE_CHUNK) {
+    const slice = renames.slice(index, index + WRITE_CHUNK);
+    const payload = Object.fromEntries(slice.map((job) => [job.path, job.name]));
+    try {
+      await update(ref(db), payload);
+      renamed += slice.length;
+    } catch (error) {
+      const message = permissionMessage(error, "Could not update names.");
+      for (const job of slice) writeFailed.push({ email: job.email, message });
+    }
+  }
+
   let added = 0;
   onProgress?.(0, fresh.length);
   for (let index = 0; index < fresh.length; index += NEW_SUBSCRIBER_PARALLEL) {
@@ -179,16 +219,20 @@ export async function addSubscribers(
           });
           return null;
         } catch (error) {
-          return error;
+          return {
+            email: row.email,
+            message: permissionMessage(error, "Could not save this contact."),
+          };
         }
       }),
     );
-    added += results.filter((error) => error == null).length;
+    for (const failure of results) {
+      if (failure) writeFailed.push(failure);
+      else added += 1;
+    }
     onProgress?.(added, fresh.length);
-    const failure = results.find((error) => error != null);
-    if (failure) throw failure;
   }
-  return { added, renamed };
+  return { added, renamed, alreadyInList, alreadyExamples, writeFailed };
 }
 
 export async function markSubscribersSent(listId: string, subscriberIds: string[], brevoCampaignId: string) {
