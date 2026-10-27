@@ -160,6 +160,62 @@ export async function addWelcomeRecipients(
   return { added, skipped };
 }
 
+function campaignToken(messageId: string) {
+  const token = messageId.replace(/[<>]/g, "").trim().slice(0, 40);
+  return token || "smtp";
+}
+
+export async function recordWelcomeSent(rows: { email: string; name: string; messageId: string }[]) {
+  await requireAdminUser();
+  if (!rows.length) return;
+  const existing = new Map((await loadWelcomeRecipients()).map((row) => [row.email, row]));
+  const updates: Record<string, unknown> = {};
+  const fresh: { id: string; email: string; name: string; campaignId: string }[] = [];
+  const seen = new Set<string>();
+  const base = "newsletter/welcomeRecipients";
+  for (const row of rows) {
+    const email = row.email.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    const name = toTitleCaseName(row.name).slice(0, 200);
+    const campaignId = campaignToken(row.messageId);
+    const current = existing.get(email);
+    if (current) {
+      updates[`${base}/${current.id}/sentAt`] = serverTimestamp();
+      updates[`${base}/${current.id}/brevoCampaignId`] = campaignId;
+      if (name && name !== current.name) updates[`${base}/${current.id}/name`] = name;
+      continue;
+    }
+    const id = push(ref(getClientDb(), base)).key;
+    if (!id) throw new Error("Could not allocate a welcome recipient id.");
+    fresh.push({ id, email, name, campaignId });
+  }
+  if (Object.keys(updates).length) await writeChunks(updates);
+
+  const db = getClientDb();
+  for (let index = 0; index < fresh.length; index += NEW_RECIPIENT_PARALLEL) {
+    const slice = fresh.slice(index, index + NEW_RECIPIENT_PARALLEL);
+    const results = await Promise.all(
+      slice.map(async (row) => {
+        try {
+          await set(ref(db, `${base}/${row.id}`), {
+            email: row.email,
+            name: row.name,
+            addedAt: serverTimestamp(),
+            sentAt: serverTimestamp(),
+            brevoCampaignId: row.campaignId,
+          });
+          return null;
+        } catch (error) {
+          return error;
+        }
+      }),
+    );
+    const failure = results.find((error) => error != null);
+    if (failure) throw failure;
+  }
+}
+
 export async function markWelcomeSent(recipientIds: string[], brevoCampaignId: string) {
   await requireAdminUser();
   if (!recipientIds.length) return;

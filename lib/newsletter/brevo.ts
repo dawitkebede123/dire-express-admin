@@ -359,6 +359,34 @@ export async function sendBrevoCampaignNow(apiKey: string, campaignId: number) {
   await brevoRequest(apiKey, `/emailCampaigns/${campaignId}/sendNow`, { method: "POST" });
 }
 
+// One transactional message to one address. This does not create a contact list or a campaign.
+export async function sendBrevoTransactional(
+  apiKey: string,
+  message: {
+    senderName: string;
+    senderEmail: string;
+    toEmail: string;
+    toName?: string;
+    subject: string;
+    htmlContent: string;
+  },
+) {
+  const to: { email: string; name?: string } = { email: message.toEmail };
+  const name = message.toName?.trim();
+  if (name) to.name = name.slice(0, 200);
+  const body = await brevoRequest<{ messageId?: string }>(apiKey, "/smtp/email", {
+    method: "POST",
+    body: {
+      sender: { name: message.senderName, email: message.senderEmail },
+      to: [to],
+      replyTo: { email: message.senderEmail, name: message.senderName },
+      subject: message.subject,
+      htmlContent: message.htmlContent,
+    },
+  });
+  return typeof body?.messageId === "string" ? body.messageId : "";
+}
+
 export async function deleteBrevoCampaign(apiKey: string, campaignId: number) {
   await brevoRequest(apiKey, `/emailCampaigns/${campaignId}`, { method: "DELETE" });
 }
