@@ -3,33 +3,38 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { permissionMessage, submitLoadReview } from "@/lib/rtdb/client-writes";
 
-export function ReviewActions({ loadId }: { loadId: string }) {
+export function ReviewActions({
+  loadId,
+  brokerId,
+  referenceNo,
+}: {
+  loadId: string;
+  brokerId: string;
+  referenceNo: string;
+}) {
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
 
   async function review(action: "approve" | "reject") {
     setBusy(action);
-    const res = await fetch(`/api/loads/${loadId}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await submitLoadReview({
+        loadId,
+        brokerId,
+        referenceNo,
         action,
         rejectionReason: action === "reject" ? reason : undefined,
-      }),
-    });
-    setBusy(null);
-
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      toast.error(data.error ?? "Review failed");
-      return;
+      });
+      toast.success(action === "approve" ? "Load approved" : "Load rejected");
+      router.push("/loads");
+    } catch (error) {
+      toast.error(permissionMessage(error, "Review failed"));
+    } finally {
+      setBusy(null);
     }
-
-    toast.success(action === "approve" ? "Load approved" : "Load rejected");
-    router.push("/loads");
-    router.refresh();
   }
 
   return (

@@ -1,29 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { toast } from "sonner";
+import { useAdminAuth } from "@/components/auth-provider";
+import { NOT_AN_ADMIN } from "@/lib/rtdb/admin-access";
+import { signInAdmin } from "@/lib/rtdb/sign-in";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { status } = useAdminAuth();
   const [email, setEmail] = useState("admin@direexpress.com");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("reason");
+    if (reason === "not-admin") toast.error(NOT_AN_ADMIN);
+  }, []);
+
+  useEffect(() => {
+    if (status === "ready") router.replace("/");
+  }, [status, router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const res = await signIn("credentials", { email, password, redirect: false });
-    setLoading(false);
-
-    if (res?.error) {
-      toast.error("Invalid admin credentials");
-      return;
+    try {
+      await signInAdmin(email, password);
+      router.push("/");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid admin credentials");
+    } finally {
+      setLoading(false);
     }
-
-    router.push("/");
-    router.refresh();
   }
 
   return (

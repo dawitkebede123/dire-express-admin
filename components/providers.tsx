@@ -1,13 +1,13 @@
 "use client";
 
-import { SessionProvider } from "next-auth/react";
 import { Toaster } from "sonner";
+import { AuthProvider } from "@/components/auth-provider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <SessionProvider>
+    <AuthProvider>
       {children}
       <Toaster position="top-right" richColors closeButton />
-    </SessionProvider>
+    </AuthProvider>
   );
 }

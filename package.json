@@ -3,30 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/windows-db-env.mjs next dev --hostname 0.0.0.0 --port 3001",
+    "dev": "next dev --hostname 0.0.0.0 --port 3001",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1 --port 3001",
     "lint": "eslint",
-    "db:generate": "prisma generate"
+    "deploy": "npm run build && firebase deploy --only hosting,database --project dire-express",
+    "db:migrate": "tsx scripts/migrate-postgres-to-rtdb.ts",
+    "db:seed": "tsx scripts/seed-firebase.ts"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.3",
-    "@prisma/adapter-pg": "^7.9.1",
-    "@prisma/client": "^7.9.1",
-    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
-    "dotenv": "^17.4.2",
+    "firebase": "^12.4.0",
     "lucide-react": "^1.28.0",
     "next": "16.3.0",
-    "next-auth": "^5.0.0-beta.32",
-    "pg": "^8.22.0",
-    "prisma": "^7.9.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
-    "zod": "^4.4.3"
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -34,8 +28,12 @@
     "@types/pg": "^8.20.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "firebase-admin": "^13.5.0",
+    "firebase-tools": "^15.0.0",
+    "pg": "^8.22.0",
     "tailwindcss": "^4",
     "tsx": "^4.23.7",
     "typescript": "^5"
